@@ -22,7 +22,7 @@ const withdrawSchema = z.object({
 
 const adminWithdrawStatusSchema = z.object({
     status: z.enum(['Approved', 'Rejected'], {
-        message: 'status must be Approved or Rejected',
+        message:     ' حالة الطلب يجب ان تكون  Approved أو Rejected',
     }),
 })
 

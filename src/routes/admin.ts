@@ -42,7 +42,7 @@ type Bindings = {
     canzo: D1Database
     JWT_SECRET: string
     RESEND_API_KEY: string
-    CANZO_R2: R2Bucket
+    CLOUDINARY_CLOUD_NAME: string
     canzo_KV:KVNamespace
 }
 type Variables = {

@@ -17,7 +17,9 @@ type TokenPayload = {
 
 type Bindings = {
     canzo: D1Database
-    CANZO_R2: R2Bucket
+    CLOUDINARY_CLOUD_NAME: string
+    CLOUDINARY_API_KEY: string
+    CLOUDINARY_API_SECRET: string
 }
 
 type Variables = {
@@ -27,15 +29,55 @@ type Variables = {
 type WithdrawalWithClient = WithdrawalRow & {
     user_name: string
     phone_number: string
-    activity_name : string
-    screenshot_url: string |null
+    activity_name: string
+    screenshot_url: string | null
 }
-    type ClientWithdrawalRow =   WithdrawalRow & {
-        screenshot_url: string | null
-    }
+
+type ClientWithdrawalRow = WithdrawalRow & {
+    screenshot_url: string | null
+}
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024
+
+async function generateSignature(paramsToSign: string, apiSecret: string): Promise<string> {
+    const encoder = new TextEncoder()
+    const data = encoder.encode(paramsToSign + apiSecret)
+    const hashBuffer = await crypto.subtle.digest('SHA-1', data)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function uploadToCloudinary(
+    file: File,
+    cloudName: string,
+    apiKey: string,
+    apiSecret: string
+): Promise<string> {
+    const timestamp = Math.floor(Date.now() / 1000).toString()
+    const signature = await generateSignature(`timestamp=${timestamp}`, apiSecret)
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('api_key', apiKey)
+    formData.append('timestamp', timestamp)
+    formData.append('signature', signature)
+
+    const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        {
+            method: 'POST',
+            body: formData,
+        }
+    )
+
+    if (!response.ok) {
+        throw new Error('فشل رفع الصورة إلى Cloudinary')
+    }
+
+    const data = (await response.json()) as { secure_url: string }
+    return data.secure_url
+}
 
 function mapWalletError(c: { json: (body: unknown, status?: number) => Response }, err: unknown) {
     if (err instanceof WalletServiceError) {
@@ -101,8 +143,7 @@ clientWithdrawRouter
             const withdrawals = await c.env.canzo
                 .prepare(
                     `SELECT id, user_id, amount, status, admin_id, screenshot_path,
-                    CASE WHEN screenshot_path IS NOT NULL THEN '/image/' || screenshot_path 
-                    ELSE NULL END AS screenshot_url, wallet_number, wallet_type, created_at, updated_at
+                     screenshot_path AS screenshot_url, wallet_number, wallet_type, created_at, updated_at
                      FROM withdrawal_requests
                      WHERE user_id = ?1
                      ORDER BY created_at DESC`
@@ -143,8 +184,7 @@ adminWithdrawRouter
                 withdrawals = await c.env.canzo
                     .prepare(
                         `SELECT wr.id, wr.user_id, wr.amount, wr.status, wr.admin_id,
-                                wr.screenshot_path, CASE WHEN wr.screenshot_path IS NOT NULL 
-                                THEN '/image/' || wr.screenshot_path ELSE NULL END AS screenshot_url , 
+                                wr.screenshot_path, wr.screenshot_path AS screenshot_url, 
                                 wr.wallet_number, wr.wallet_type, wr.created_at, wr.updated_at,
                                 u.user_name, u.phone_number
                          FROM withdrawal_requests wr
@@ -158,9 +198,8 @@ adminWithdrawRouter
                 withdrawals = await c.env.canzo
                     .prepare(
                         `SELECT wr.id, wr.user_id, wr.amount, wr.status, wr.admin_id,
-                                wr.screenshot_path,CASE WHEN wr.screenshot_path IS NOT NULL 
-                                THEN '/image/' || wr.screenshot_path ELSE NULL END AS screenshot_url ,
-                                 wr.wallet_number, wr.wallet_type, wr.created_at, wr.updated_at,
+                                wr.screenshot_path, wr.screenshot_path AS screenshot_url,
+                                wr.wallet_number, wr.wallet_type, wr.created_at, wr.updated_at,
                                 u.user_name, u.phone_number
                          FROM withdrawal_requests wr
                          JOIN users u ON wr.user_id = u.id
@@ -176,7 +215,6 @@ adminWithdrawRouter
         }
     })
     .patch('/withdraw/:id', async (c) => {
-        let fileName: string | null = null
         try {
             const { userId: adminId } = c.get('jwtPayload') as TokenPayload
             const id = Number(c.req.param('id'))
@@ -193,6 +231,7 @@ adminWithdrawRouter
             }
 
             if (status === 'Approved') {
+                let imageUrl: string | null = null
                 if (image && image instanceof File) {
                     if (image.size > MAX_IMAGE_BYTES) {
                         return c.json({ error: 'حجم الصورة أكبر من 2 ميجا' }, 400)
@@ -200,24 +239,20 @@ adminWithdrawRouter
                     if (!ALLOWED_IMAGE_TYPES.includes(image.type)) {
                         return c.json({ error: 'نوع الصورة غير صالح' }, 400)
                     }
-                    fileName = `${Date.now()}-withdraw-${image.name}`
-                    await c.env.CANZO_R2.put(fileName, image, {
-                        httpMetadata: { contentType: image.type },
-                    })
+                    imageUrl = await uploadToCloudinary(
+                        image,
+                        c.env.CLOUDINARY_CLOUD_NAME,
+                        c.env.CLOUDINARY_API_KEY,
+                        c.env.CLOUDINARY_API_SECRET
+                    )
                 }
-                await approveWithdrawal(c.env.canzo, id, adminId, fileName)
+                await approveWithdrawal(c.env.canzo, id, adminId, imageUrl)
                 return c.json({ message: 'تم الموافقة على عملية السحب' }, 200)
             }
 
             await rejectWithdrawal(c.env.canzo, id, adminId)
-            if (fileName) {
-                await c.env.CANZO_R2.delete(fileName)
-            }
             return c.json({ message: 'تم رفض عملية السحب' }, 200)
         } catch (error) {
-            if (fileName) {
-                await c.env.CANZO_R2.delete(fileName)
-            }
             return mapWalletError(c, error)
         }
     })
