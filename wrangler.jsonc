@@ -1,26 +1,27 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "canzo",
-  "main": "src/index.ts",
-  "compatibility_date": "2026-05-08",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "canzo",
-      "database_id": "c838d093-07c9-410e-ab70-dee4e79120a1"
-    }
-  ],
-  "kv_namespaces": [
-    {
-      "binding": "canzo_KV",
-      "id": "65e25e8a704b41cdab80953c95c10f62"
-    }
-  ],
-  "vars": {
-    "CLOUDINARY_CLOUD_NAME": "wlslnvd1",
-    "CLOUDINARY_API_KEY": "633495434566245"
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "canzo",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-05-08",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "canzo",
+			"database_id": "c838d093-07c9-410e-ab70-dee4e79120a1"
+		}
+	],
+
+	"vars": {
+		"CLOUDINARY_CLOUD_NAME": "wlslnvd1",
+		"CLOUDINARY_API_KEY": "633495434566245"
+	},
+	"kv_namespaces": [
+		{
+			"binding": "canzo_KV",
+			"id": "7eedffefc7854f43ab32ed33436b61f3"
+		}
+	]
 }
