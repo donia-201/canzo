@@ -113,13 +113,13 @@ clientWithdrawRouter
                 const { userId } = c.get('jwtPayload') as TokenPayload
                 const { amount, wallet_number, wallet_type } = c.req.valid('json')
                 const withdrawalId = await createWithdrawalRequest(
-                    c.env.canzo,
+                    c.env.DB,
                     userId,
                     amount,
                     wallet_number,
                     wallet_type
                 )
-                const wallet = await getWallet(c.env.canzo, userId)
+                const wallet = await getWallet(c.env.DB, userId)
                 return c.json(
                     {
                         message: 'تم طلب عملية السحب بنجاح',
@@ -140,7 +140,7 @@ clientWithdrawRouter
     .get('/withdrawals', async (c) => {
         try {
             const { userId } = c.get('jwtPayload') as TokenPayload
-            const withdrawals = await c.env.canzo
+            const withdrawals = await c.env.DB
                 .prepare(
                     `SELECT id, user_id, amount, status, admin_id, screenshot_path,
                      screenshot_path AS screenshot_url, wallet_number, wallet_type, created_at, updated_at
@@ -150,7 +150,7 @@ clientWithdrawRouter
                 )
                 .bind(userId)
                 .all<ClientWithdrawalRow>()
-            const wallet = await getWallet(c.env.canzo, userId)
+            const wallet = await getWallet(c.env.DB, userId)
             return c.json({
                 withdrawals: withdrawals.results,
                 wallet: {
@@ -181,7 +181,7 @@ adminWithdrawRouter
 
             let withdrawals
             if (status) {
-                withdrawals = await c.env.canzo
+                withdrawals = await c.env.DB
                     .prepare(
                         `SELECT wr.id, wr.user_id, wr.amount, wr.status, wr.admin_id,
                                 wr.screenshot_path, wr.screenshot_path AS screenshot_url, 
@@ -195,7 +195,7 @@ adminWithdrawRouter
                     .bind(status)
                     .all<WithdrawalWithClient>()
             } else {
-                withdrawals = await c.env.canzo
+                withdrawals = await c.env.DB
                     .prepare(
                         `SELECT wr.id, wr.user_id, wr.amount, wr.status, wr.admin_id,
                                 wr.screenshot_path, wr.screenshot_path AS screenshot_url,
@@ -246,11 +246,11 @@ adminWithdrawRouter
                         c.env.CLOUDINARY_API_SECRET
                     )
                 }
-                await approveWithdrawal(c.env.canzo, id, adminId, imageUrl)
+                await approveWithdrawal(c.env.DB, id, adminId, imageUrl)
                 return c.json({ message: 'تم الموافقة على عملية السحب' }, 200)
             }
 
-            await rejectWithdrawal(c.env.canzo, id, adminId)
+            await rejectWithdrawal(c.env.DB, id, adminId)
             return c.json({ message: 'تم رفض عملية السحب' }, 200)
         } catch (error) {
             return mapWalletError(c, error)

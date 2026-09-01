@@ -10,7 +10,7 @@ import { clientWithdrawRouter, adminWithdrawRouter } from "./routes/withdrawal"
 import {prettyJSON} from "hono/pretty-json"
 import verifyRole from "./middlewares/verifyRole"
 type Bindings = {
-    JWT_SECRET: string
+    JWT_SECRET: string; 
 }
 
 const app = new Hono<{Bindings:Bindings}>()
