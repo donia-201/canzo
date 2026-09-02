@@ -75,9 +75,9 @@ clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
       return c.json({error:"العميل غير موجود"},404)
    }
 
-// Check if user is requesting water (Canz) but is not a Wedding hall
+// Check if user is requesting water (Plastic) but is not a Wedding hall
    const filteredBaskets = unMappedBaskets.filter((b) => {
-          if (b.content_type === "Canz" && user.activity_type !== "Wedding hall") {
+          if (b.content_type === "Plastic" && user.activity_type !== "Wedding hall") {
             return false; // استبعاد المياه إذا لم يكن العميل قاعة أفراح
           }
           return true;
@@ -85,7 +85,7 @@ clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
 
         if (filteredBaskets.length === 0) {
           return c.json(
-            { error: "طلب المياه (Canz) متاح حالياً لقاعات الأفراح فقط" },
+            { error: "طلب المياه متاح حالياً لقاعات الأفراح فقط" },
             400
           );
         }

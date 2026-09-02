@@ -16,7 +16,7 @@ type TokenPayload = {
 }
 
 type Bindings = {
-    canzo: D1Database
+    DB: D1Database
     CLOUDINARY_CLOUD_NAME: string
     CLOUDINARY_API_KEY: string
     CLOUDINARY_API_SECRET: string
