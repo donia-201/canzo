@@ -9,7 +9,7 @@ type TokenPayload = {
 }
 
 type Bindings = {
-    canzo: D1Database;
+    DB: D1Database;
     JWT_SECRET: string;
     RESEND_API_KEY: string;
     canzo_KV: KVNamespace;

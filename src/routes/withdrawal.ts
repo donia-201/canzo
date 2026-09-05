@@ -133,7 +133,12 @@ clientWithdrawRouter
                     201
                 )
             } catch (error) {
-                return mapWalletError(c, error)
+                console.log("withdral error : ", error)
+
+                return c.json({
+                    error: 'حدث خطأ في الخادم',
+                    details: String(error)
+                }, 500 )
             }
         }
     )
