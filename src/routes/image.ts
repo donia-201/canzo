@@ -21,7 +21,7 @@ const cloudinaryUrl = `https://res.cloudinary.com/${cloudName}/image/upload/${ke
 return c.redirect(cloudinaryUrl, 302);
   } catch (error) {
     console.error(`error while getting image ${error}`);
-    return c.json({ error: "خطأ داخلي في النظام" }, 500);
+        throw error
   }
 })
 export default imageRouter

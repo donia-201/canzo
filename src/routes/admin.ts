@@ -66,7 +66,7 @@ const adminRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
     }
     }catch(error){
         console.error(`error while getting orders ${error}`)
-        return c.json({error:"حدث خطأ داخلي في الخادم"},500)
+        throw error
     }
 }).patch("/order/:id",async(c)=>{
     try{
@@ -120,7 +120,7 @@ const adminRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
       }
     }catch(error){
         console.error(`error while updating order status ${error}`)
-        return c.json({error:"حدث خطأ داخلي في الخادم"},500)
+        throw error
     }
 }).get("/analytics",async(c)=>{
     try{
@@ -141,7 +141,7 @@ const adminRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
 return c.json({chart:daysSoldPerDay,materialsWeightSoldThisWeek:materialsWeightSoldThisWeek.results,profitsThisWeek:profitsThisWeek.results},200)
     }catch(error){
         console.error(`error while getting analytics ${error}`)
-        return c.json({error:"Internal server error"},500)
+        throw error
     }
 }).get("/transactions",async(c)=>{
     try{
@@ -149,7 +149,7 @@ return c.json({chart:daysSoldPerDay,materialsWeightSoldThisWeek:materialsWeightS
         return c.json({transactions:transactions.results},200)
     }catch(error){
         console.error(`error while getting transactions ${error}`)
-        return c.json({error:"حدث خطأ داخلي في الخادم"},500)
+        throw error
     }
 }).get("/client-list",async(c)=>{
   try{
@@ -157,7 +157,7 @@ return c.json({chart:daysSoldPerDay,materialsWeightSoldThisWeek:materialsWeightS
     return c.json({users:users.results},200)
   }catch(error){
     console.error(`error while getting clients ${error}`)
-    return c.json({error:"حدث خطأ داخلي في الخادم"},500)
+        throw error
   }
 }).get("/stats",async(c)=>{
     try{
@@ -178,7 +178,7 @@ return c.json({chart:daysSoldPerDay,materialsWeightSoldThisWeek:materialsWeightS
         },200)
     }catch(error){
         console.error(`error while getting stats ${error}`)
-        return c.json({error:"حدث خطأ داخلي في الخادم"},500)
+        throw error
     }
 }).get("/notifications", async (c) => {
     try {
@@ -189,7 +189,7 @@ return c.json({chart:daysSoldPerDay,materialsWeightSoldThisWeek:materialsWeightS
         return c.json({ notifications: notifications.results });
     } catch (error) {
         console.error(`error while getting notifications ${error}`)
-        return c.json({ error: "حدث خطأ داخلي في الخادم" }, 500)
+        throw error
     }
 })
 export default adminRouter

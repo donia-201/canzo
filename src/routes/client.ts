@@ -106,8 +106,12 @@ clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
         400
       )
     }
+    // OLD CALCULATION : the DB value was previously treated as a per-kg price.
+    // const totalPrice = pricePerKg.price_per_kg * b.content_weight
 
-    const totalPrice = pricePerKg.price_per_kg * b.content_weight
+    //  The value stored in pricing.price_per_kg is now the price of the whole basket.
+    // Therefore we use it directly without multiplying by the basket weight.
+    const totalPrice = pricePerKg.price_per_kg
     for (let i = 0; i < b.amount; i++) {
       baskets.push({
         content_type: b.content_type,
@@ -125,7 +129,7 @@ clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
 return c.json({ message: "تمت  إضافة السلة بنجاح" }, 201);
     }catch(error){
         console.error(`خطأ أثناء إضافة السلة ${error}`)
-        return c.json({error:"حطأ داخلي في الخادم"},500)
+        throw error
     }
 }).patch("/baskets/:id/fill",async(c)=>{
     try{
@@ -162,7 +166,7 @@ return c.json({error:"فشل في تغيير حالة السلة الى ممتل
 return c.json({message:"تم تعبئة السلة بنجاح"},200)
     }catch(error){
         console.error(`error while setting basket full ${error}`)
-        return c.json({error:"خطأ داخلي في الخادم"},500)
+        throw error
     }
 }).get("/baskets",async(c)=>{
     try{
@@ -171,7 +175,7 @@ const baskets = await c.env.DB.prepare("SELECT id,content_type,content_weight,is
 return c.json({baskets:baskets.results})
     }catch(error){
         console.error(`خطأ أثناء جلب السلة ${error}`)
-        return c.json({error:"خطأ داخلي في الخادم"},500)
+        throw error
     }
 }).get("/orders/count",async(c)=>{
     try{
@@ -182,7 +186,7 @@ return c.json({baskets:baskets.results})
         return c.json({counts})
     }catch(error){
         console.error(`خطأ أثناء جلب عدد الطلبات ${error}`)
-        return c.json({error:"خطأ داخلي في الخادم"},500)
+        throw error
     }
 }).get("/orders/:status",async(c)=>{
     try{
@@ -240,7 +244,7 @@ if (status === "Pending") {
 return c.json({orders:orders.results})
     }catch(error){
         console.error(`error while getting orders ${error}`)
-        return c.json({error:"Internal server error"},500)
+        throw error
     }
 }).get("/transactions",async(c)=>{
     try{    
@@ -270,7 +274,7 @@ if (!wallet){
 return c.json({wallet})
     }catch(error){
         console.error(`خطأ أثناء حذف المحفظة ${error}`)
-        return c.json({error:"Internal server error",message:error},500)
+        throw error
     }
 }).delete("/basket/:id", async (c) => {
     try {
@@ -292,7 +296,7 @@ return c.json({wallet})
         return c.json({ message: "Basket deleted successfully" }, 200)
     } catch (error) {
         console.error(`خطأ أثناء حذف السلة ${error}`)
-        return c.json({ error: "Internal server error" }, 500)
+        throw error
     }
 })
 

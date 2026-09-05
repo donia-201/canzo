@@ -30,7 +30,7 @@ profileRouter.get("/profile", async (c) => {
         return c.json({ profile ,userId})
     } catch (error) {
         console.error(`error while getting profile ${error}`)
-        return c.json({ error: "حدث خطأ داخلي في الخادم" }, 500)
+        throw error
     }
 })
 .patch("/profile", zValidator("json", updateProfileSchema, (result, c) => {
@@ -74,7 +74,7 @@ profileRouter.get("/profile", async (c) => {
         return c.json({ message: "تم تعديل صفحة المستخدم بنجاح" }, 200)
     } catch (error) {
         console.error(`خطأ أثناء تعديل صفحة المستخدم ${error}`)
-        return c.json({ error: "Internal server error" }, 500)
+        throw error
     }
 }).patch("/password", zValidator("json", passwordSchema, (result, c) => {
     if (!result.success) return c.json({ error: result.error.issues[0].message }, 400)
@@ -91,7 +91,7 @@ profileRouter.get("/profile", async (c) => {
         return c.json({ message: "تم تغيير كلمة المرور بنجاح" }, 200)
     } catch (error) {
         console.error(`error while updating password ${error}`)
-        return c.json({ error: "خطأ داخلي في الخادم" }, 500)
+        throw error
     }
 })
 

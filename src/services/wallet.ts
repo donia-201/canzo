@@ -17,21 +17,37 @@ export type WithdrawalRow = {
     updated_at: string
 }
 
-export class WalletServiceError extends Error {
+import { AppError } from '../middlewares/errorHandler'
+
+export class WalletServiceError extends AppError {
     constructor(
-        public readonly code:
+        code:
             | 'INSUFFICIENT_BALANCE'
             | 'PENDING_WITHDRAWAL_EXISTS'
             | 'WITHDRAWAL_NOT_FOUND'
             | 'WITHDRAWAL_NOT_PENDING'
             | 'WALLET_LOCK_FAILED'
-            | 'WALLET_RELEASE_FAILED',
+            | 'WALLET_RELEASE_FAILED'
+            | 'WALLET_NOT_FOUND'
+            | 'INVALID_AMOUNT',
         message: string
     ) {
-        super(message)
+        const statusMap: Record<WalletServiceError['code'], 400 | 404 | 409 | 500> = {
+            INSUFFICIENT_BALANCE: 400,
+            PENDING_WITHDRAWAL_EXISTS: 409,
+            WITHDRAWAL_NOT_FOUND: 404,
+            WITHDRAWAL_NOT_PENDING: 409,
+            WALLET_LOCK_FAILED: 500,
+            WALLET_RELEASE_FAILED: 500,
+            // Added dedicated mappings for missing wallets and invalid amounts.
+            WALLET_NOT_FOUND: 404,
+            INVALID_AMOUNT: 400,
+        }
+        super(code, message, statusMap[code])
         this.name = 'WalletServiceError'
     }
 }
+
 
 export async function ensureWallet(db: D1Database, userId: number): Promise<void> {
     await db
@@ -51,7 +67,8 @@ export async function getWallet(db: D1Database, userId: number): Promise<WalletR
         .bind(userId)
         .first<WalletRow>()
     if (!wallet) {
-        throw new WalletServiceError('WALLET_LOCK_FAILED', 'Wallet not found')
+        // Missing wallet is a 404, not a wallet-lock/server error.
+        throw new WalletServiceError('WALLET_NOT_FOUND', 'المحفظة غير موجودة')
     }
     return wallet
 }
@@ -61,7 +78,10 @@ export async function creditWallet(
     userId: number,
     amount: number
 ): Promise<void> {
-    if (amount <= 0) return
+    if (amount <= 0) {
+        // Do not silently ignore invalid financial amounts.
+        throw new WalletServiceError('INVALID_AMOUNT', 'المبلغ يجب أن يكون أكبر من الصفر')
+    }
     await ensureWallet(db, userId)
     const result = await db
         .prepare(
@@ -72,7 +92,7 @@ export async function creditWallet(
         .bind(amount, userId)
         .run()
     if (result.meta.changes === 0) {
-        throw new WalletServiceError('WALLET_LOCK_FAILED', 'Failed to credit wallet')
+        throw new WalletServiceError('WALLET_LOCK_FAILED', 'فشل تحديث رصيد المحفظة')
     }
 }
 
@@ -84,7 +104,8 @@ export async function createWithdrawalRequest(
     walletType: string
 ): Promise<number> {
     if (amount <= 0) {
-        throw new WalletServiceError('INSUFFICIENT_BALANCE', 'Invalid amount')
+        //Invalid amount gets its own 400 error code.
+        throw new WalletServiceError('INVALID_AMOUNT', 'المبلغ يجب أن يكون أكبر من الصفر')
     }
 
     await ensureWallet(db, userId)
@@ -101,7 +122,7 @@ export async function createWithdrawalRequest(
     if (pending) {
         throw new WalletServiceError(
             'PENDING_WITHDRAWAL_EXISTS',
-            'A pending withdrawal already exists'
+            'يوجد طلب سحب قيد المراجعة بالفعل'
         )
     }
 
@@ -117,49 +138,64 @@ export async function createWithdrawalRequest(
         .run()
 
     if (lock.meta.changes === 0) {
-        throw new WalletServiceError('INSUFFICIENT_BALANCE', 'Insufficient balance')
+        throw new WalletServiceError('INSUFFICIENT_BALANCE', 'الرصيد غير كافي للسحب')
     }
 
-    const insert = await db
-        .prepare(
-            `INSERT INTO withdrawal_requests (user_id, amount, status, wallet_number, wallet_type)
-             VALUES (?1, ?2, 'Pending', ?3, ?4)`
-        )
-        .bind(userId, amount, walletNumber, walletType)
-        .run()
+    const clientInfo = await db.prepare('SELECT activity_name FROM clients WHERE user_id = ?1')
+        .bind(userId).first<{ activity_name: string }>()
 
-    const withdrawalId = insert.meta.last_row_id
-    if (!withdrawalId) {
+    const clientName = clientInfo?.activity_name || `user ${userId}`
+
+    const adminMessage = `طلب سحب جديد من ${clientName} بمبلغ ${amount} :ج. م ,نوع المحفظة ${walletType} رقم المحفظة :${walletNumber}`
+
+    let withdrawalId: number | null = null
+
+    try {
+        const insert = await db
+            .prepare(
+                `INSERT INTO withdrawal_requests (user_id, amount, status, wallet_number, wallet_type)
+                 VALUES (?1, ?2, 'Pending', ?3, ?4)`
+            )
+            .bind(userId, amount, walletNumber, walletType)
+            .run()
+
+        withdrawalId = Number(insert.meta.last_row_id)
+        if (!withdrawalId) {
+            throw new WalletServiceError('WALLET_LOCK_FAILED', 'فشل إنشاء طلب السحب')
+        }
+
+        //  If notification creation fails, the catch removes the withdrawal and restores the wallet.
         await db
             .prepare(
-                `UPDATE wallets
-                 SET balance = balance + ?1,
-                     pending_balance = pending_balance - ?1,
-                     updated_at = datetime('now')
-                 WHERE user_id = ?2`
+                `INSERT INTO notifications (recipient_id, recipient_type, message)
+                 SELECT id, 'Admin', ?1 FROM users WHERE user_role = 'Admin'`
             )
-            .bind(amount, userId)
+            .bind(adminMessage)
             .run()
-        throw new WalletServiceError('WALLET_LOCK_FAILED', 'Failed to create withdrawal')
+
+        return Number(withdrawalId)
+    } catch (error) {
+        // Compensate for a failed insert/notification so a failed request cannot leave the wallet deducted.
+        try {
+            await db.batch([
+                db.prepare(
+                    `DELETE FROM withdrawal_requests
+                     WHERE id = ?1`
+                ).bind(withdrawalId ?? -1),
+                db.prepare(
+                    `UPDATE wallets
+                     SET balance = balance + ?1,
+                         pending_balance = pending_balance - ?1,
+                         updated_at = datetime('now')
+                     WHERE user_id = ?2`
+                ).bind(amount, userId),
+            ])
+        } catch (rollbackError) {
+            // Log failed financial compensation as critical.
+            console.error('CRITICAL: failed to restore wallet after withdrawal creation error:', rollbackError)
+        }
+        throw error
     }
-
-    const clientInfo = await db.prepare('SELECT activity_name FROM clients WHERE user_id =?1 ')
-    .bind(userId).first<{activity_name:string}>()
-
-    const clientName = clientInfo?.activity_name ||  `user ${userId}`
-
-    const adminMessage = `طلب سحب جديد من ${clientName} بمبلغ 
-    ${amount} :ج. م ,نوع المحفظة ${walletType} رقم المحفظة :${walletNumber}`
-    // Create notifications for all admin users
-    await db
-        .prepare(
-            `INSERT INTO notifications (recipient_id, recipient_type, message)
-             SELECT id, 'Admin', ?1 FROM users WHERE user_role = 'Admin'`
-        )
-        .bind(adminMessage)
-        .run()
-
-    return Number(withdrawalId)
 }
 
 export async function approveWithdrawal(
@@ -177,10 +213,10 @@ export async function approveWithdrawal(
         .first<WithdrawalRow>()
 
     if (!withdrawal) {
-        throw new WalletServiceError('WITHDRAWAL_NOT_FOUND', 'Withdrawal not found')
+        throw new WalletServiceError('WITHDRAWAL_NOT_FOUND', 'طلب السحب غير موجود')
     }
     if (withdrawal.status !== 'Pending') {
-        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'Withdrawal is not pending')
+        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'طلب السحب لم يعد قيد الانتظار')
     }
 
     const results = await db.batch([
@@ -217,20 +253,25 @@ export async function approveWithdrawal(
     ])
 
     if (results[0].meta.changes === 0) {
-        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'Withdrawal is not pending')
+        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'طلب السحب لم يعد قيد الانتظار')
     }
     if (results[1].meta.changes === 0) {
-        throw new WalletServiceError('WALLET_RELEASE_FAILED', 'Failed to finalize withdrawal')
+        throw new WalletServiceError('WALLET_RELEASE_FAILED', 'فشل إنهاء عملية السحب')
     }
 
-    // Create notification for the user
-    await db
-        .prepare(
-            `INSERT INTO notifications (recipient_id, recipient_type, message)
-             VALUES (?1, 'Client', ?2)`
-        )
-        .bind(withdrawal.user_id, ` تمت الموافقة على عملية السحب رقم  #${withdrawalId} `)
-        .run()
+    // Notification failure must not turn an already successful financial operation into a 500.
+    try {
+        await db
+            .prepare(
+                `INSERT INTO notifications (recipient_id, recipient_type, message)
+                 VALUES (?1, 'Client', ?2)`
+            )
+            .bind(withdrawal.user_id, ` تمت الموافقة على عملية السحب رقم  #${withdrawalId} `)
+            .run()
+    } catch (notificationError) {
+        // Log notification failure while keeping the approved withdrawal successful.
+        console.error('Withdrawal approval notification failed:', notificationError)
+    }
 }
 
 
@@ -248,10 +289,10 @@ export async function rejectWithdrawal(
         .first<WithdrawalRow>()
 
     if (!withdrawal) {
-        throw new WalletServiceError('WITHDRAWAL_NOT_FOUND', 'Withdrawal not found')
+        throw new WalletServiceError('WITHDRAWAL_NOT_FOUND', 'طلب السحب غير موجود')
     }
     if (withdrawal.status !== 'Pending') {
-        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'Withdrawal is not pending')
+        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'طلب السحب لم يعد قيد الانتظار')
     }
 
     const results = await db.batch([
@@ -276,13 +317,23 @@ export async function rejectWithdrawal(
     ])
 
     if (results[0].meta.changes === 0) {
-        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'Withdrawal is not pending')
+        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'طلب السحب لم يعد قيد الانتظار')
     }
     if (results[1].meta.changes === 0) {
-        throw new WalletServiceError('WALLET_RELEASE_FAILED', 'Failed to release funds')
+        throw new WalletServiceError('WALLET_RELEASE_FAILED', 'فشل إعادة المبلغ إلى المحفظة')
     }
-     await db.prepare(`INSERT INTO notifications (recipient_id, recipient_type, message) VALUES (?1 , 'cluent' , ?2)` ).
-    bind(withdrawal.user_id , ` ${withdrawalId}# تم رفض عملية السحب رقم `).run()
+    try {
+        await db
+            .prepare(
+                `INSERT INTO notifications (recipient_id, recipient_type, message)
+                 VALUES (?1, 'Client', ?2)`
+            )
+            .bind(withdrawal.user_id, ` ${withdrawalId}# تم رفض عملية السحب رقم `)
+            .run()
+    } catch (notificationError) {
+        //  Keep the successful rejection/refund successful if notification storage fails.
+        console.error('Withdrawal rejection notification failed:', notificationError)
+    }
 }
 
    

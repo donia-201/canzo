@@ -73,7 +73,7 @@ const authRouter = new Hono<{Bindings:Bindings}>()
     return c.json({message:"Client registered successfully"},201)
 }catch(error){
     console.error(`error while registering client ${error}`)
-    return c.json({error:"Internal server error"},500)
+        throw error
         }
     }).post("/login",zValidator("json",loginSchema,(result,c)=>{
         
@@ -96,7 +96,7 @@ const token = await sign({userId:result.id,user_role:result.user_role,exp: expir
 return c.json({message:"Login successful", token,user:{id:result.id,user_role:result.user_role,user_name:result.user_name}});
 }catch(error){
     console.error(error)
-    return c.json({error:"Internal server error"},500)
+        throw error
 }
     }).post("/forgot-password",zValidator("json",enterEmailSchema,(result,c)=>{
         if(!result.success){
@@ -125,7 +125,7 @@ await sendEmail(c.env.BRAVO_API_KEY,emailData,c.env.SENDER_EMAIL)
 return c.json({message:"OTP sent successfully"})
 }catch(error){
     console.error(`error while sending otp ${error}`)
-    return c.json({error:"Internal server error "+error},500)
+        throw error
 }
     }).post("/verify-otp",zValidator("json",enterOtpSchema,(result,c)=>{
         if(!result.success){
@@ -144,7 +144,7 @@ await c.env.canzo_KV.put(`reset-token:${email}`,resetToken,{expirationTtl:2000})
 return c.json({message:"OTP verified successfully",resetToken},200)
 }catch(error){
     console.error(`error while verifying OTP ${error}`)
-    return c.json({error:"Internal server error"},500)
+        throw error
 }
     }).patch("/reset-password",zValidator("json",resetPasswordSchema,(result,c)=>{
         if(!result.success){
@@ -165,7 +165,7 @@ try{
     return c.json({message:"Password reset successful"},200)
 }catch(error){
     console.error(`error while resetting password ${error}`)
-    return c.json({error:"Internal server error"},500)
+        throw error
 }
     }).post("/google", zValidator("json",googleLoginSchema),
     async (c) => {
@@ -205,8 +205,8 @@ const token = await sign({
 },c.env.JWT_SECRET!);
 return c.json({token,user_role:user?.user_role,isFirstLogin})
     } catch (error) {
-        console.log(error)
-        return c.json({ message:  error },500)
+        console.error("error while Google login", error)
+        throw error
     }
 })
 export default authRouter 

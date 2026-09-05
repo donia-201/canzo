@@ -25,8 +25,7 @@ app.use("/api/*",(c,next)=>{
   return jwtMiddleware(c, next)
 })
 app.use("/api/client/*",verifyRole("Client"))
-//app.use("/api/admin/*",verifyRole("Admin"))
-
+app.use("/api/admin/*",verifyRole("Admin"))
 app.route("/api/admin/", adminRouter)
 app.route("/api/admin/", profileRouter)
 app.route("/auth/", authRouter)

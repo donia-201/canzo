@@ -134,11 +134,8 @@ clientWithdrawRouter
                 )
             } catch (error) {
                 console.log("withdral error : ", error)
+                 throw error
 
-                return c.json({
-                    error: 'حدث خطأ في الخادم',
-                    details: String(error)
-                }, 500 )
             }
         }
     )
@@ -216,7 +213,7 @@ adminWithdrawRouter
             return c.json({ withdrawals: withdrawals.results }, 200)
         } catch (error) {
             console.error(`error while getting withdrawals ${error}`)
-            return c.json({ error: 'حدث خطأ داخلي في الخادم' }, 500)
+        throw error
         }
     })
     .patch('/withdraw/:id', async (c) => {

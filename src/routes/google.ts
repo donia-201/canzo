@@ -56,7 +56,7 @@ googleRouter.post("/setup-profile",
         return c.json({message:"تم إعداد الملف الشخصي بنجاح"})
     } catch (error) {
         console.error(`error while setting up profile ${error}`)
-        return c.json({error:"خطأ داخلي في الخادم"},500)
+        throw error
     }
 });
 export default googleRouter;
