@@ -37,12 +37,11 @@ const authRouter = new Hono<{Bindings:Bindings}>()
    zValidator("json",clientSignupSchema,(result,c)=>{
     if(!result.success){
         return c.json({error:result.error.issues[0].message},400)
-      
     }
    }) 
     ,async(c)=>{
         try{
-    const {username,password,email,phoneNumber,address,activityType,activityName,customBusinessType} =  c.req.valid("json")
+    const {username,password,email,phoneNumber,address,activityType,activityName} =  c.req.valid("json")
     const hashedPassword = await bcrypt.hash(password, 10)
     console.log("db binding", c.env.DB);
     
@@ -53,22 +52,25 @@ const authRouter = new Hono<{Bindings:Bindings}>()
     // Determine the actual activity type to store
     let finalActivityType: string;
     if (activityType === "Other") {
-      if (!customBusinessType || !customBusinessType.trim()) {
-        // This should not happen due to validation, but being safe
-        return c.json({error:"Custom business type is required when 'Other' is selected"}, 400);
-      }
-      finalActivityType = customBusinessType.trim();
-    } else {
-      // When not "Other", customBusinessType should be undefined (per validation)
-      finalActivityType = activityType;
+        finalActivityType= "Other";
+
+    //   if (!customBusinessType || !customBusinessType.trim()) {
+       // This should not happen due to validation, but being safe
+    //     return c.json({error:"Custom business type is required when 'Other' is selected"}, 400);
     }
-     console.log("DB binding" , c.env.DB ),
+    //   finalActivityType= "Other";
+    //   finalActivityType = customBusinessType.trim();
+    //  }
+    else {
+    finalActivityType = activityType;
+    }
+    console.log("DB binding" , c.env.DB ),
 
     await c.env.DB.batch([
         c.env.DB
         .prepare(" INSERT INTO users (user_name, phone_number, email, password_hash, user_role) VALUES (?1, ?2, ?3, ?4, 'Client')")
         .bind(username,phoneNumber,email,hashedPassword),
-         c.env.DB.prepare("INSERT INTO clients (user_id, address, activity_type, activity_name) VALUES (last_insert_rowid(), ?1, ?2, ?3)").bind(address,finalActivityType,activityName)
+        c.env.DB.prepare("INSERT INTO clients (user_id, address, activity_type, activity_name) VALUES (last_insert_rowid(), ?1, ?2, ?3)").bind(address,finalActivityType,activityName)
         ])
     return c.json({message:"Client registered successfully"},201)
 }catch(error){
@@ -76,7 +78,7 @@ const authRouter = new Hono<{Bindings:Bindings}>()
         throw error
         }
     }).post("/login",zValidator("json",loginSchema,(result,c)=>{
-        
+    
         if(!result.success){
             return c.json({error:result.error.issues[0].message},400)
         }

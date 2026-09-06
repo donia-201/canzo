@@ -238,8 +238,26 @@ adminWithdrawRouter
                     if (image.size > MAX_IMAGE_BYTES) {
                         return c.json({ error: 'حجم الصورة أكبر من 2 ميجا' }, 400)
                     }
-                    if (!ALLOWED_IMAGE_TYPES.includes(image.type)) {
-                        return c.json({ error: 'نوع الصورة غير صالح' }, 400)
+                    const imageType= image.type.toLocaleLowerCase().trim()
+                    const fileName= image.name.toLocaleLowerCase()
+                    const isValidType =ALLOWED_IMAGE_TYPES.includes(imageType) || 
+                    fileName.endsWith('.png') ||
+                    fileName.endsWith('.jpg') ||
+                    fileName.endsWith('.jpeg') ||
+                    fileName.endsWith('.webp') ;
+
+                    if (!isValidType) {
+                        console.error(
+                            'Invalid withdrwal screenShot :',
+                            {
+                                name: image.name,
+                                type: image.type,
+                                size : image.size,
+                            }
+                        )
+                        return c.json(
+                            { error :' نوع الصورة غير صالح , المسموح png , jpg , jpeg , webp'}, 400
+                        );
                     }
                     imageUrl = await uploadToCloudinary(
                         image,

@@ -49,6 +49,8 @@ type Transaction = {
     amount: number
     status: string
     created_at: string
+    screenshot_path: string |null
+
 }
 //wallet
 type Wallet = {
@@ -261,7 +263,7 @@ return c.json({allTransactions:allTransactions.results,
     totalEarnings:totalEarnings})
     }catch(error){
         console.error(`error while getting transactions ${error}`)
-        return c.json({error:"Internal server error"},500)
+        throw error
     }
  }) .get("/wallet",async(c)=>{
     try{
@@ -296,6 +298,21 @@ return c.json({wallet})
         return c.json({ message: "Basket deleted successfully" }, 200)
     } catch (error) {
         console.error(`خطأ أثناء حذف السلة ${error}`)
+        throw error
+    }
+}).get("/notifications", async (c) => {
+    try {
+        const { userId } = c.get("jwtPayload") as TokenPayload
+
+        const notifications = await c.env.DB.prepare(
+            "SELECT id, message, is_read, created_at FROM notifications WHERE recipient_id = ?1 AND recipient_type = 'Client' ORDER BY created_at DESC"
+        )
+        .bind(userId)
+        .all()
+
+        return c.json({ notifications: notifications.results }, 200)
+    } catch (error) {
+        console.error('error while getting client notifications ${error}')
         throw error
     }
 })

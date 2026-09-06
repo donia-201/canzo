@@ -29,7 +29,8 @@ export class WalletServiceError extends AppError {
             | 'WALLET_LOCK_FAILED'
             | 'WALLET_RELEASE_FAILED'
             | 'WALLET_NOT_FOUND'
-            | 'INVALID_AMOUNT',
+            | 'INVALID_AMOUNT'
+            | 'TRANSACTION_CREATE_FAILED',
         message: string
     ) {
         const statusMap: Record<WalletServiceError['code'], 400 | 404 | 409 | 500> = {
@@ -42,6 +43,7 @@ export class WalletServiceError extends AppError {
             // Added dedicated mappings for missing wallets and invalid amounts.
             WALLET_NOT_FOUND: 404,
             INVALID_AMOUNT: 400,
+            TRANSACTION_CREATE_FAILED: 500,
         }
         super(code, message, statusMap[code])
         this.name = 'WalletServiceError'
@@ -67,7 +69,6 @@ export async function getWallet(db: D1Database, userId: number): Promise<WalletR
         .bind(userId)
         .first<WalletRow>()
     if (!wallet) {
-        // Missing wallet is a 404, not a wallet-lock/server error.
         throw new WalletServiceError('WALLET_NOT_FOUND', 'المحفظة غير موجودة')
     }
     return wallet
@@ -79,7 +80,6 @@ export async function creditWallet(
     amount: number
 ): Promise<void> {
     if (amount <= 0) {
-        // Do not silently ignore invalid financial amounts.
         throw new WalletServiceError('INVALID_AMOUNT', 'المبلغ يجب أن يكون أكبر من الصفر')
     }
     await ensureWallet(db, userId)
@@ -91,6 +91,7 @@ export async function creditWallet(
         )
         .bind(amount, userId)
         .run()
+
     if (result.meta.changes === 0) {
         throw new WalletServiceError('WALLET_LOCK_FAILED', 'فشل تحديث رصيد المحفظة')
     }
@@ -173,10 +174,11 @@ export async function createWithdrawalRequest(
             .bind(adminMessage)
             .run()
 
-        return Number(withdrawalId)
+        return withdrawalId
     } catch (error) {
-        // Compensate for a failed insert/notification so a failed request cannot leave the wallet deducted.
-        try {
+// If creating the withdrawal request fails after the wallet was reserved,
+        // restore the original wallet balance.   
+         try {
             await db.batch([
                 db.prepare(
                     `DELETE FROM withdrawal_requests
@@ -197,143 +199,399 @@ export async function createWithdrawalRequest(
         throw error
     }
 }
-
+/**
+ * APPROVE WITHDRAWAL Flow:
+ * Pending
+ *   ↓
+ * Atomically claim as Approved
+ *   ↓
+ * Decrease pending_balance
+ *   ↓
+ * Create Approved transaction
+ *   ↓
+ * Send notification
+ */
 export async function approveWithdrawal(
     db: D1Database,
     withdrawalId: number,
     adminId: number,
     screenshotPath: string | null
 ): Promise<void> {
+
     const withdrawal = await db
         .prepare(
             `SELECT id, user_id, amount, status
-             FROM withdrawal_requests WHERE id = ?1`
+             FROM withdrawal_requests
+             WHERE id = ?1`
         )
         .bind(withdrawalId)
         .first<WithdrawalRow>()
-
-    if (!withdrawal) {
-        throw new WalletServiceError('WITHDRAWAL_NOT_FOUND', 'طلب السحب غير موجود')
+if (!withdrawal) {
+        throw new WalletServiceError(
+            'WITHDRAWAL_NOT_FOUND',
+            'طلب السحب غير موجود'
+        )
     }
+
     if (withdrawal.status !== 'Pending') {
-        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'طلب السحب لم يعد قيد الانتظار')
+        throw new WalletServiceError(
+            'WITHDRAWAL_NOT_PENDING',
+           ` لا يمكن الموافقة على طلب السحب لأنه ${
+                withdrawal.status === 'Approved'
+                    ? 'تمت الموافقة عليه بالفعل'
+                    : 'تم رفضه بالفعل'
+            }`
+        )}
+   /*
+     * We no longer update the withdrawal and wallet in the same batch.
+     * First we atomically claim the withdrawal:
+     * Pending -> Approved
+     * The "AND status = Pending" prevents another request
+     * from approving/rejecting the same withdrawal.
+     */
+    const claim = await db
+        .prepare(
+            `UPDATE withdrawal_requests
+             SET status = 'Approved',
+                 admin_id = ?1,
+                 screenshot_path = ?2,
+                 updated_at = datetime('now')
+             WHERE id = ?3
+             AND status = 'Pending'`
+        )
+        .bind(
+            adminId, screenshotPath, withdrawalId
+        )
+        .run()
+
+    if (claim.meta.changes === 0) {
+        // Another request processed this withdrawal between
+        // the SELECT and UPDATE.
+        throw new WalletServiceError(
+            'WITHDRAWAL_NOT_PENDING',
+            'طلب السحب تم التعامل معه بالفعل بواسطة عملية أخرى'
+        )
     }
 
-    const results = await db.batch([
-        db
-            .prepare(
-                `UPDATE withdrawal_requests
-                 SET status = 'Approved',
-                     admin_id = ?1,
-                     screenshot_path = ?2,
-                     updated_at = datetime('now')
-                 WHERE id = ?3 AND status = 'Pending'`  
-            )
-            .bind(adminId, screenshotPath, withdrawalId),
-        db
+
+    try {
+        /*
+         * Only after successfully claiming the withdrawal,
+         * update the wallet.
+         */
+        const walletUpdate = await db
             .prepare(
                 `UPDATE wallets
                  SET pending_balance = pending_balance - ?1,
                      updated_at = datetime('now')
-                 WHERE user_id = ?2 AND pending_balance >= ?1`
+                 WHERE user_id = ?2
+                 AND pending_balance >= ?1`
             )
-            .bind(withdrawal.amount, withdrawal.user_id),
-        db
+            .bind(
+                withdrawal.amount, withdrawal.user_id
+            )
+            .run()
+        if (walletUpdate.meta.changes === 0) {
+            // Clear message explaining that the wallet could not
+            // release the pending amount.
+            throw new WalletServiceError(
+                'WALLET_RELEASE_FAILED',
+                'فشل إنهاء عملية السحب: الرصيد المعلّق غير كافٍ أو المحفظة غير موجودة'
+            )
+        }
+        try {
+            /*
+             * Create the financial transaction only after:
+             * 1. Withdrawal is Approved
+             * 2. pending_balance is decreased
+             */
+            await db
+                .prepare(
+                    `INSERT INTO transactions (
+                        client_id,  admin_id, amount, status,
+                        screenshot_path, note, approved_at
+                    )
+                    VALUES (
+                        ?1,
+                        ?2,
+                        ?3,
+                        'Approved',
+                        ?4,
+                        'withdrawal',
+                        datetime('now')
+                    )`
+                )
+                .bind(
+                    withdrawal.user_id, adminId,
+                    -Math.abs(withdrawal.amount),
+                    screenshotPath
+                )
+                .run()
+
+        } catch (transactionError) {
+
+            /*
+             * If the transaction cannot be created,
+             * restore pending_balance.
+             * We don't want:
+             * withdrawal = Approved
+             * pending_balance = decreased
+             * transaction = missing
+             */
+            try {
+
+                await db
+                    .prepare(
+                        `UPDATE wallets
+                         SET pending_balance = pending_balance + ?1,
+                             updated_at = datetime('now')
+                         WHERE user_id = ?2`
+                    )
+                    .bind(
+                        withdrawal.amount,
+                        withdrawal.user_id
+                    )
+                    .run()
+
+            } catch (rollbackWalletError) {
+                // Critical financial consistency error.
+                console.error(
+                    'CRITICAL: failed to restore pending wallet balance after approval transaction error:',
+                    rollbackWalletError
+                )
+            }
+            // Return a specific error instead of hiding the transaction failure.
+            throw new WalletServiceError(
+                'TRANSACTION_CREATE_FAILED',
+                'فشل تسجيل المعاملة المالية الخاصة بعملية السحب'
+            )
+        }
+
+    } catch (error) {
+
+        /*
+         * If anything in the financial part fails,
+         * restore the withdrawal back to Pending.
+         * This prevents an Approved request from remaining Approved
+         * when the financial operation did not finish correctly.
+         */
+        try {
+
+            await db
+                .prepare(
+                   ` UPDATE withdrawal_requests
+                     SET status = 'Pending',
+                         admin_id = NULL,
+                         screenshot_path = NULL,
+                         updated_at = datetime('now')
+                     WHERE id = ?1
+                     AND status = 'Approved'
+                     AND admin_id = ?2`
+                )
+                .bind(
+                    withdrawalId,
+                    adminId
+                )
+                .run()
+
+        } catch (rollbackStatusError) {
+
+            console.error(
+                'CRITICAL: failed to restore withdrawal status after approval error:',
+                rollbackStatusError
+            )
+        }
+
+        throw error
+    }
+
+
+    /*
+     * Notification is NOT part of the financial operation.
+     * We don't return 500 because the actual withdrawal succeeded.
+     */
+
+    try {
+
+        await db
             .prepare(
-                `INSERT INTO transactions (
-                    client_id, admin_id, amount, status, screenshot_path, note, approved_at
-                 ) VALUES (?1, ?2, ?3, 'Approved', ?4, 'withdrawal', datetime('now'))`
+               ` INSERT INTO notifications
+                (recipient_id, recipient_type, message)
+                 VALUES (?1, 'Client', ?2)`
             )
             .bind(
                 withdrawal.user_id,
-                adminId,
-                -Math.abs(withdrawal.amount),
-                screenshotPath
-            ),
-    ])
-
-    if (results[0].meta.changes === 0) {
-        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'طلب السحب لم يعد قيد الانتظار')
-    }
-    if (results[1].meta.changes === 0) {
-        throw new WalletServiceError('WALLET_RELEASE_FAILED', 'فشل إنهاء عملية السحب')
-    }
-
-    // Notification failure must not turn an already successful financial operation into a 500.
-    try {
-        await db
-            .prepare(
-                `INSERT INTO notifications (recipient_id, recipient_type, message)
-                 VALUES (?1, 'Client', ?2)`
+               ` تمت الموافقة على عملية السحب رقم #${withdrawalId}`
             )
-            .bind(withdrawal.user_id, ` تمت الموافقة على عملية السحب رقم  #${withdrawalId} `)
             .run()
+
     } catch (notificationError) {
-        // Log notification failure while keeping the approved withdrawal successful.
-        console.error('Withdrawal approval notification failed:', notificationError)
+        // Notification failure is logged but does not undo a successful payment.
+        console.error(
+            'Withdrawal approval notification failed:',
+            notificationError
+        )
     }
 }
-
-
+////////////////////////////////////////////////////////
+/**
+ * REJECT WITHDRAWAL Flow:
+ * Pending
+ *   ↓
+ * Atomically claim as Rejected
+ *   ↓
+ * Return amount to balance
+ *   ↓
+ * Decrease pending_balance
+ *   ↓
+ * Send notification
+ * NO transaction is created here because the money was NOT paid out.
+ */
 export async function rejectWithdrawal(
     db: D1Database,
     withdrawalId: number,
     adminId: number
 ): Promise<void> {
-    const withdrawal = await db
+const withdrawal = await db
         .prepare(
             `SELECT id, user_id, amount, status
-             FROM withdrawal_requests WHERE id = ?1`
+             FROM withdrawal_requests
+             WHERE id = ?1`
         )
         .bind(withdrawalId)
         .first<WithdrawalRow>()
-
     if (!withdrawal) {
-        throw new WalletServiceError('WITHDRAWAL_NOT_FOUND', 'طلب السحب غير موجود')
+        throw new WalletServiceError(
+            'WITHDRAWAL_NOT_FOUND',
+            'طلب السحب غير موجود'
+        )
     }
     if (withdrawal.status !== 'Pending') {
-        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'طلب السحب لم يعد قيد الانتظار')
+        throw new WalletServiceError(
+            'WITHDRAWAL_NOT_PENDING',
+          `  لا يمكن رفض طلب السحب لأنه ${
+                withdrawal.status === 'Approved'
+                    ? 'تمت الموافقة عليه بالفعل'
+                    : 'تم رفضه بالفعل'
+            }`
+        )
     }
 
-    const results = await db.batch([
-        db
-            .prepare(
-                `UPDATE withdrawal_requests
-                 SET status = 'Rejected',
-                     admin_id = ?1,
-                     updated_at = datetime('now')
-                 WHERE id = ?2 AND status = 'Pending'`
-            )
-            .bind(adminId, withdrawalId),
-        db
+    /*
+     * IMPORTANT CHANGE:
+     * Claim the withdrawal first:
+     * Pending -> Rejected
+     * The condition "status = Pending" makes this atomic.
+     */
+    const claim = await db
+        .prepare(
+            `UPDATE withdrawal_requests
+             SET status = 'Rejected',
+                 admin_id = ?1,
+                 updated_at = datetime('now')
+             WHERE id = ?2
+             AND status = 'Pending'`
+        )
+        .bind(
+            adminId,
+            withdrawalId
+        )
+        .run()
+    if (claim.meta.changes === 0) {
+        // Another request has already processed the withdrawal.
+        throw new WalletServiceError(
+            'WITHDRAWAL_NOT_PENDING',
+            'طلب السحب تم التعامل معه بالفعل بواسطة عملية أخرى'
+        )
+    }
+
+
+    try {
+        /*
+         * Only after the request is successfully marked Rejected,
+         * return the reserved money to the client's balance.
+         */
+
+        const walletUpdate = await db
             .prepare(
                 `UPDATE wallets
                  SET balance = balance + ?1,
                      pending_balance = pending_balance - ?1,
                      updated_at = datetime('now')
-                 WHERE user_id = ?2 AND pending_balance >= ?1`
+                 WHERE user_id = ?2
+                 AND pending_balance >= ?1`
             )
-            .bind(withdrawal.amount, withdrawal.user_id),
-    ])
+            .bind(
+                withdrawal.amount,
+                withdrawal.user_id
+            )
+            .run()
 
-    if (results[0].meta.changes === 0) {
-        throw new WalletServiceError('WITHDRAWAL_NOT_PENDING', 'طلب السحب لم يعد قيد الانتظار')
+        if (walletUpdate.meta.changes === 0) {
+            // Clear message showing exactly why the refund failed.
+            throw new WalletServiceError(
+                'WALLET_RELEASE_FAILED',
+                'فشل إعادة المبلغ إلى المحفظة: الرصيد المعلّق غير كافٍ أو المحفظة غير موجودة'
+            )
+        }
+    } catch (error) {
+
+        /*
+         * If the refund fails, don't leave:
+         * withdrawal = Rejected
+         * money = still locked
+         * Instead return the request to Pending.
+         */
+        try {
+
+            await db
+                .prepare(
+                    `UPDATE withdrawal_requests
+                     SET status = 'Pending',
+                         admin_id = NULL,
+                         updated_at = datetime('now')
+                     WHERE id = ?1
+                     AND status = 'Rejected'
+                     AND admin_id = ?2`
+                )
+                .bind(
+                    withdrawalId,
+                    adminId
+                )
+                .run()
+        } catch (rollbackStatusError) {
+
+            console.error(
+                'CRITICAL: failed to restore withdrawal status after rejection error:',
+                rollbackStatusError
+            )
+        }
+
+        throw error
     }
-    if (results[1].meta.changes === 0) {
-        throw new WalletServiceError('WALLET_RELEASE_FAILED', 'فشل إعادة المبلغ إلى المحفظة')
-    }
+    /*
+     * Reject does NOT create a transaction.
+     * The money was never paid out.
+     * It was only moved:
+     * pending_balance -> balance
+     */
     try {
-        await db
+await db
             .prepare(
-                `INSERT INTO notifications (recipient_id, recipient_type, message)
+                `INSERT INTO notifications
+                 (recipient_id, recipient_type, message)
                  VALUES (?1, 'Client', ?2)`
             )
-            .bind(withdrawal.user_id, ` ${withdrawalId}# تم رفض عملية السحب رقم `)
+            .bind(
+                withdrawal.user_id,
+               ` تم رفض عملية السحب رقم #${withdrawalId}`
+            )
             .run()
+
     } catch (notificationError) {
-        //  Keep the successful rejection/refund successful if notification storage fails.
-        console.error('Withdrawal rejection notification failed:', notificationError)
+        // Notification failure must not turn a successful rejection/refund into 500.
+        console.error(
+            'Withdrawal rejection notification failed:', notificationError     )
     }
 }
-
-   
+  
