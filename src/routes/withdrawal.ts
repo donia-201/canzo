@@ -37,7 +37,7 @@ type ClientWithdrawalRow = WithdrawalRow & {
     screenshot_url: string | null
 }
 
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const ALLOWED_IMAGE_TYPES = ['image/jpg','image/jpeg', 'image/png', 'image/webp']
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024
 
 async function generateSignature(paramsToSign: string, apiSecret: string): Promise<string> {
@@ -72,6 +72,15 @@ async function uploadToCloudinary(
     )
 
     if (!response.ok) {
+        const errorText =await response.text()
+        console.error('cloudinare upload error:' ,
+           { status: response.status,
+            response: errorText,
+            fileName: file.name,
+            fileType: file.type,
+            fileSize: file.size,}
+        );
+        
         throw new Error('فشل رفع الصورة إلى Cloudinary')
     }
 

@@ -8,3 +8,4 @@ INSERT OR IGNORE INTO pricing (material, activity_type, price_per_kg) VALUES
   ('Canz', 'Club', 200),
   -- ('Plastic', 'Restaurant', 10),
   ('Canz', 'Restaurant', 200);
+  ('Canz', 'Other', 200);

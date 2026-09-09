@@ -166,18 +166,24 @@ export async function createWithdrawalRequest(
         }
 
         //  If notification creation fails, the catch removes the withdrawal and restores the wallet.
-        await db
+        const notificationResult = await db
             .prepare(
                 `INSERT INTO notifications (recipient_id, recipient_type, message)
                  SELECT id, 'Admin', ?1 FROM users WHERE user_role = 'Admin'`
             )
             .bind(adminMessage)
             .run()
+            console.log(`Admin withdrawal notifications created : ${notificationResult.meta.changes}`)
 
         return withdrawalId
     } catch (error) {
-// If creating the withdrawal request fails after the wallet was reserved,
-        // restore the original wallet balance.   
+     console.error('create withdrawal error :', error)
+     if (error instanceof Error){
+     console.error('error message:', error.message)
+          console.error('error stack:', error.stack)
+
+     }
+
          try {
             await db.batch([
                 db.prepare(
@@ -433,7 +439,6 @@ if (!withdrawal) {
         )
     }
 }
-////////////////////////////////////////////////////////
 /**
  * REJECT WITHDRAWAL Flow:
  * Pending
