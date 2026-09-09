@@ -76,7 +76,7 @@ async function uploadToCloudinary(
     }
 
     const timestamp = Math.floor(Date.now() / 1000).toString()
-    const stringTosign=`timestamp =${timestamp}`
+    const stringTosign=`timestamp=${timestamp}`
 
    
 
