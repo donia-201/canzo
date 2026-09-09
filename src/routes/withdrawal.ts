@@ -40,12 +40,21 @@ type ClientWithdrawalRow = WithdrawalRow & {
 const ALLOWED_IMAGE_TYPES = ['image/jpg','image/jpeg', 'image/png', 'image/webp']
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024
 
-async function generateSignature(paramsToSign: string, apiSecret: string): Promise<string> {
+async function generateSignature(
+    paramsToSign: string,
+    apiSecret: string
+): Promise<string> {
     const encoder = new TextEncoder()
+
     const data = encoder.encode(paramsToSign + apiSecret)
+
     const hashBuffer = await crypto.subtle.digest('SHA-1', data)
+
     const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+
+    return hashArray
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
 }
 
 async function uploadToCloudinary(
@@ -54,10 +63,35 @@ async function uploadToCloudinary(
     apiKey: string,
     apiSecret: string
 ): Promise<string> {
+
+    // CHANGE: Make sure Cloudinary variables actually exist.
+    if (!cloudName || !apiKey || !apiSecret) {
+        console.error('CLOUDINARY CONFIG ERROR:', {
+            cloudNameExists: !!cloudName,
+            apiKeyExists: !!apiKey,
+            apiSecretExists: !!apiSecret,
+        })
+
+        throw new Error('إعدادات Cloudinary غير مكتملة')
+    }
+
     const timestamp = Math.floor(Date.now() / 1000).toString()
-    const signature = await generateSignature(`timestamp=${timestamp}`, apiSecret)
+
+    const signature = await generateSignature(
+        `timestamp=${timestamp}`,
+        apiSecret
+    )
+
+    console.log('CLOUDINARY DEBUG:', {
+        timestamp,
+        signature,
+        cloudName,
+        apiKeyExists: !!apiKey,
+        apiSecretExists: !!apiSecret,
+    })
 
     const formData = new FormData()
+
     formData.append('file', file)
     formData.append('api_key', apiKey)
     formData.append('timestamp', timestamp)
@@ -71,20 +105,30 @@ async function uploadToCloudinary(
         }
     )
 
+    const responseText = await response.text()
+
     if (!response.ok) {
-        const errorText =await response.text()
-        console.error('cloudinare upload error:' ,
-           { status: response.status,
-            response: errorText,
-            fileName: file.name,
-            fileType: file.type,
-            fileSize: file.size,}
-        );
-        
+        console.error('CLOUDINARY UPLOAD ERROR:', {
+            status: response.status,
+            response: responseText,
+        })
+
         throw new Error('فشل رفع الصورة إلى Cloudinary')
     }
 
-    const data = (await response.json()) as { secure_url: string }
+    const data = JSON.parse(responseText) as {
+        secure_url?: string
+    }
+
+    if (!data.secure_url) {
+        console.error(
+            'CLOUDINARY ERROR: secure_url missing',
+            responseText
+        )
+
+        throw new Error('لم يتم الحصول على رابط الصورة من Cloudinary')
+    }
+
     return data.secure_url
 }
 
