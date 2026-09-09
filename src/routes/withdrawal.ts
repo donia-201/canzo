@@ -40,23 +40,103 @@ type ClientWithdrawalRow = WithdrawalRow & {
 const ALLOWED_IMAGE_TYPES = ['image/jpg','image/jpeg', 'image/png', 'image/webp']
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024
 
-async function generateSignature(
-    paramsToSign: string,
-    apiSecret: string
-): Promise<string> {
-    const encoder = new TextEncoder()
+// async function generateSignature(
+//     paramsToSign: string,
+//     apiSecret: string
+// ): Promise<string> {
+//     const encoder = new TextEncoder()
 
-    const data = encoder.encode(paramsToSign + apiSecret)
+//     const data = encoder.encode(paramsToSign + apiSecret)
 
-    const hashBuffer = await crypto.subtle.digest('SHA-1', data)
+//     const hashBuffer = await crypto.subtle.digest('SHA-1', data)
 
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
+//     const hashArray = Array.from(new Uint8Array(hashBuffer))
 
-    return hashArray
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('')
-}
+//     return hashArray
+//         .map((b) => b.toString(16).padStart(2, '0'))
+//         .join('')
+// }
 
+// async function uploadToCloudinary(
+//     file: File,
+//     cloudName: string,
+//     apiKey: string,
+//     apiSecret: string
+// ): Promise<string> {
+
+//     // CHANGE: Make sure Cloudinary variables actually exist.
+//     if (!cloudName || !apiKey || !apiSecret) {
+//         console.error('CLOUDINARY CONFIG ERROR:', {
+//             cloudNameExists: !!cloudName,
+//             apiKeyExists: !!apiKey,
+//             apiSecretExists: !!apiSecret,
+//         })
+
+//         throw new Error('إعدادات Cloudinary غير مكتملة')
+//     }
+
+//     const timestamp = Math.floor(Date.now() / 1000).toString()
+//     const stringTosign=`timestamp=${timestamp}`
+
+   
+
+//     const signature = await generateSignature(
+//        // `timestamp=${timestamp}`,
+//        stringTosign,
+//         apiSecret
+//     )
+
+//     console.log('CLOUDINARY DEBUG:', {
+//         timestamp,
+//         stringTosign,
+//         signature,
+//         cloudName,
+//         apiSecretLength: apiSecret.length,
+//         apiKeyExists: !!apiKey,
+//         apiSecretExists: !!apiSecret,
+//     })
+
+//     const formData = new FormData()
+
+//     formData.append('file', file)
+//     formData.append('api_key', apiKey)
+//     formData.append('timestamp', timestamp)
+//     formData.append('signature', signature)
+
+//     const response = await fetch(
+//         `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+//         {
+//             method: 'POST',
+//             body: formData,
+//         }
+//     )
+
+//     const responseText = await response.text()
+
+//     if (!response.ok) {
+//         console.error('CLOUDINARY UPLOAD ERROR:', {
+//             status: response.status,
+//             response: responseText,
+//         })
+
+//         throw new Error('فشل رفع الصورة إلى Cloudinary')
+//     }
+
+//     const data = JSON.parse(responseText) as {
+//         secure_url?: string
+//     }
+
+//     if (!data.secure_url) {
+//         console.error(
+//             'CLOUDINARY ERROR: secure_url missing',
+//             responseText
+//         )
+
+//         throw new Error('لم يتم الحصول على رابط الصورة من Cloudinary')
+//     }
+
+//     return data.secure_url
+// }
 async function uploadToCloudinary(
     file: File,
     cloudName: string,
@@ -64,8 +144,8 @@ async function uploadToCloudinary(
     apiSecret: string
 ): Promise<string> {
 
-    // CHANGE: Make sure Cloudinary variables actually exist.
-    if (!cloudName || !apiKey || !apiSecret) {
+    // CHANGE: Validate Cloudinary configuration.
+    if (!cloudName  || !apiKey || !apiSecret) {
         console.error('CLOUDINARY CONFIG ERROR:', {
             cloudNameExists: !!cloudName,
             apiKeyExists: !!apiKey,
@@ -75,38 +155,20 @@ async function uploadToCloudinary(
         throw new Error('إعدادات Cloudinary غير مكتملة')
     }
 
-    const timestamp = Math.floor(Date.now() / 1000).toString()
-    const stringTosign=`timestamp=${timestamp}`
-
-   
-
-    const signature = await generateSignature(
-       // `timestamp=${timestamp}`,
-       stringTosign,
-        apiSecret
-    )
-
-    console.log('CLOUDINARY DEBUG:', {
-        timestamp,
-        stringTosign,
-        signature,
-        cloudName,
-        apiSecretLength: apiSecret.length,
-        apiKeyExists: !!apiKey,
-        apiSecretExists: !!apiSecret,
-    })
+    // CHANGE: Use Cloudinary Basic Authentication instead of a signed request.
+    const credentials = btoa(`${apiKey}:${apiSecret}`)
 
     const formData = new FormData()
-
     formData.append('file', file)
-    formData.append('api_key', apiKey)
-    formData.append('timestamp', timestamp)
-    formData.append('signature', signature)
 
     const response = await fetch(
         `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
         {
             method: 'POST',
+            headers: {
+                // CHANGE: Authenticate using API Key + API Secret.
+                Authorization: `Basic ${credentials}`,
+            },
             body: formData,
         }
     )
@@ -117,6 +179,9 @@ async function uploadToCloudinary(
         console.error('CLOUDINARY UPLOAD ERROR:', {
             status: response.status,
             response: responseText,
+            fileName: file.name,
+            fileType: file.type,
+            fileSize: file.size,
         })
 
         throw new Error('فشل رفع الصورة إلى Cloudinary')
