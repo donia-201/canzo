@@ -76,22 +76,22 @@ async function uploadToCloudinary(
     }
 
     const timestamp = Math.floor(Date.now() / 1000).toString()
-    console.log('cloudinary sign debug: ',{
-        timestamp ,
-        apiSecretLength: apiSecret.length,
-        apiSecretstartwith: apiSecret.substring(0, 3),
-        apiSecretendwith: apiSecret.substring(apiSecret.length-3)
-    })
+    const stringTosign=`timestamp =${timestamp}`
+
+   
 
     const signature = await generateSignature(
-        `timestamp=${timestamp}`,
+       // `timestamp=${timestamp}`,
+       stringTosign,
         apiSecret
     )
 
     console.log('CLOUDINARY DEBUG:', {
         timestamp,
+        stringTosign,
         signature,
         cloudName,
+        apiSecretLength: apiSecret.length,
         apiKeyExists: !!apiKey,
         apiSecretExists: !!apiSecret,
     })
