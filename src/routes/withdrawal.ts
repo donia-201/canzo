@@ -160,6 +160,10 @@ async function uploadToCloudinary(
 
     const formData = new FormData()
     formData.append('file', file)
+    console.log('cloudinary config debbud:',{
+        cloudName, apiKey,
+        apiSecret,
+    })
 
     const response = await fetch(
         `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
