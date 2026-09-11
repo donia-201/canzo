@@ -162,7 +162,6 @@ async function uploadToCloudinary(
     formData.append('file', file)
     console.log('cloudinary config debbud:',{
         cloudName, apiKey,
-        apiSecret,
     })
 
     const response = await fetch(

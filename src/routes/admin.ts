@@ -1,5 +1,6 @@
 import {Hono} from 'hono';
 import { creditWallet } from '../services/wallet';
+import {AppError } from '../middlewares/errorHandler';
 
 //types
 type ClientsWithDetails = {
@@ -180,16 +181,64 @@ return c.json({chart:daysSoldPerDay,materialsWeightSoldThisWeek:materialsWeightS
         console.error(`error while getting stats ${error}`)
         throw error
     }
-}).get("/notifications", async (c) => {
+ }).get("/notifications", async (c) => {
     try {
-        const { userId, user_role } = c.get("jwtPayload") as TokenPayload;
+        // CHANGE: Get JWT payload first and log it safely.
+        const jwtPayload = c.get("jwtPayload");
+
+        console.log("ADMIN NOTIFICATIONS JWT:", jwtPayload);
+
+        // CHANGE: Validate that JWT payload exists.
+        if (!jwtPayload) {
+            throw new AppError(
+                "AUTHENTICATION_ERROR",
+                "بيانات تسجيل الدخول غير موجودة",
+                401
+            );
+        }
+
+        const { userId } = jwtPayload as TokenPayload;
+
+        console.log("ADMIN NOTIFICATIONS USER ID:", userId);
+
+        // CHANGE: Admin notifications always use recipient_type = 'Admin'.
         const notifications = await c.env.DB.prepare(
-            "SELECT id, message, is_read, created_at FROM notifications WHERE recipient_id = ?1 AND recipient_type = ?2 ORDER BY created_at DESC"
-        ).bind(userId, user_role).all();
-        return c.json({ notifications: notifications.results });
+            "SELECT id, message, is_read, created_at FROM notifications WHERE recipient_id = ?1 AND recipient_type = 'Admin' ORDER BY created_at DESC"
+        )
+            .bind(userId)
+            .all();
+
+        console.log(
+            "ADMIN NOTIFICATIONS RESULT:",
+            notifications.results
+        );
+
+        return c.json(
+            {
+                notifications: notifications.results
+            },
+            200
+        );
+
     } catch (error) {
-        console.error(`error while getting notifications ${error}`)
-        throw error
+        console.error(
+            "ERROR WHILE GETTING ADMIN NOTIFICATIONS:",
+            error
+        );
+
+        throw error;
     }
 })
+//.get("/notifications", async (c) => {
+//     try {
+//         const { userId, user_role } = c.get("jwtPayload") as TokenPayload;
+//         const notifications = await c.env.DB.prepare(
+//             "SELECT id, message, is_read, created_at FROM notifications  WHERE recipient_id = ?1 AND recipient_type = ?2 ORDER BY created_at DESC"
+//         ).bind(userId, user_role).all();
+//         return c.json({ notifications: notifications.results });
+//     } catch (error) {
+//         console.error(`error while getting notifications ${error}`)
+//         throw error
+//     }
+// })
 export default adminRouter
