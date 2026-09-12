@@ -20,6 +20,9 @@ type Bindings = {
     CLOUDINARY_CLOUD_NAME: string
     CLOUDINARY_API_KEY: string
     CLOUDINARY_API_SECRET: string
+    FIREBASE_PROJECT_ID: string
+    FIREBASE_CLIENT_EMAIL: string
+    FIREBASE_PRIVATE_KEY: string
 }
 
 type Variables = {
@@ -393,11 +396,19 @@ adminWithdrawRouter
                         c.env.CLOUDINARY_API_SECRET
                     )
                 }
-                await approveWithdrawal(c.env.DB, id, adminId, imageUrl)
+                await approveWithdrawal(c.env.DB, id, adminId, imageUrl ,{
+                    FIREBASE_PROJECT_ID: c.env.FIREBASE_PROJECT_ID,
+        FIREBASE_CLIENT_EMAIL: c.env.FIREBASE_CLIENT_EMAIL,
+        FIREBASE_PRIVATE_KEY: c.env.FIREBASE_PRIVATE_KEY ,
+                })
                 return c.json({ message: 'تم الموافقة على عملية السحب' }, 200)
             }
 
-            await rejectWithdrawal(c.env.DB, id, adminId)
+            await rejectWithdrawal(c.env.DB, id, adminId , {
+                    FIREBASE_PROJECT_ID: c.env.FIREBASE_PROJECT_ID,
+        FIREBASE_CLIENT_EMAIL: c.env.FIREBASE_CLIENT_EMAIL,
+        FIREBASE_PRIVATE_KEY: c.env.FIREBASE_PRIVATE_KEY ,
+                })
             return c.json({ message: 'تم رفض عملية السحب' }, 200)
         } catch (error) {
             return mapWalletError(c, error)

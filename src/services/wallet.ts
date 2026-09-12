@@ -18,6 +18,7 @@ export type WithdrawalRow = {
 }
 
 import { AppError } from '../middlewares/errorHandler'
+import { sendFirebasePush } from '../services/firebase'
 
 export class WalletServiceError extends AppError {
     constructor(
@@ -221,7 +222,12 @@ export async function approveWithdrawal(
     db: D1Database,
     withdrawalId: number,
     adminId: number,
-    screenshotPath: string | null
+    screenshotPath: string | null,
+    firebaseEnv:{
+        FIREBASE_PROJECT_ID: string;
+        FIREBASE_CLIENT_EMAIL: string;
+        FIREBASE_PRIVATE_KEY: string;
+    }
 ): Promise<void> {
 
     const withdrawal = await db
@@ -438,7 +444,43 @@ if (!withdrawal) {
             notificationError
         )
     }
+    // Send Push Notification to the owner of this withdrawal only
+try {
+    const user = await db
+        .prepare(
+           ` SELECT fcm_token
+             FROM users
+             WHERE id = ?1`
+        )
+        .bind(withdrawal.user_id)
+        .first<{ fcm_token: string | null }>()
+
+    if (user?.fcm_token) {
+        await sendFirebasePush(
+            firebaseEnv,
+            user.fcm_token,
+            'Canzo',
+           ` تمت الموافقة على عملية السحب رقم #${withdrawalId}`,
+            {
+                type: 'withdrawal',
+                withdraw_id: String(withdrawalId),
+            }
+        )
+    } else {
+        console.log(
+            `No FCM token found for user ${withdrawal.user_id}`
+        )
+    }
+
+} catch (pushError) {
+    // Push failure must NOT undo a successful withdrawal.
+    console.error(
+        'Withdrawal approval push notification failed:',
+        pushError
+    )
 }
+}
+
 /**
  * REJECT WITHDRAWAL Flow:
  * Pending
@@ -455,7 +497,12 @@ if (!withdrawal) {
 export async function rejectWithdrawal(
     db: D1Database,
     withdrawalId: number,
-    adminId: number
+    adminId: number,
+    firebaseEnv:{
+    FIREBASE_PROJECT_ID: string;
+    FIREBASE_CLIENT_EMAIL: string;
+    FIREBASE_PRIVATE_KEY: string;
+    }
 ): Promise<void> {
 const withdrawal = await db
         .prepare(
@@ -598,5 +645,40 @@ await db
         console.error(
             'Withdrawal rejection notification failed:', notificationError     )
     }
+    try {
+    const user = await db
+        .prepare(
+            `SELECT fcm_token
+             FROM users
+             WHERE id = ?1`
+        )
+        .bind(withdrawal.user_id)
+        .first<{ fcm_token: string | null }>()
+
+    if (user?.fcm_token) {
+        await sendFirebasePush(
+            firebaseEnv,
+            user.fcm_token,
+            'Canzo',
+           ` تم رفض عملية السحب رقم #${withdrawalId}`,
+            {
+                type: 'withdrawal',
+                withdraw_id: String(withdrawalId),
+            }
+        )
+    } else {
+        console.log(
+            `No FCM token found for user ${withdrawal.user_id}`
+        )
+    }
+
+} catch (pushError) {
+    // Push failure must NOT undo a successful rejection/refund.
+    console.error(
+        'Withdrawal rejection push notification failed:',
+        pushError
+    )
 }
   
+}
+// Send Push Notification to the owner of this withdrawal only
