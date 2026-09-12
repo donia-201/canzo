@@ -9,7 +9,7 @@ import googleRouter from "./routes/google"
 import { clientWithdrawRouter, adminWithdrawRouter } from "./routes/withdrawal"
 import {prettyJSON} from "hono/pretty-json"
 import verifyRole from "./middlewares/verifyRole"
-import {deviceTokenRouter } from "./routes/deviceToken"
+import deviceTokenRouter  from "./routes/deviceToken"
 type Bindings = {
     JWT_SECRET: string; 
 }
