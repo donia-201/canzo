@@ -58,7 +58,9 @@ testNotificationRouter.post("/test-push", async (c) => {
         400
       );
     }
-
+console.log("Firebase project:", c.env.FIREBASE_PROJECT_ID);
+console.log("Firebase client email type:", typeof c.env.FIREBASE_CLIENT_EMAIL);
+console.log("Firebase client email exists:", !!c.env.FIREBASE_CLIENT_EMAIL);
     await sendFirebasePush(
       c.env,
       user.fcm_token,
