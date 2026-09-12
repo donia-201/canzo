@@ -10,8 +10,12 @@ import { clientWithdrawRouter, adminWithdrawRouter } from "./routes/withdrawal"
 import {prettyJSON} from "hono/pretty-json"
 import verifyRole from "./middlewares/verifyRole"
 import deviceTokenRouter  from "./routes/deviceToken"
+import testNotificationRouter from './routes/testNotification';
 type Bindings = {
     JWT_SECRET: string; 
+    FIREBASE_PROJECT_ID: string;
+    FIREBASE_CLIENT_EMAIL: string;
+    FIREBASE_PRIVATE_KEY: string;
 }
 
 const app = new Hono<{Bindings:Bindings}>()
@@ -37,5 +41,6 @@ app.route("/api/client/", profileRouter)
 app.route("/api/admin/", adminWithdrawRouter)
 app.route("/",imageRouter)
 app.route("/api/", deviceTokenRouter)
+app.route("/api/" , testNotificationRouter)
 
 export default app
