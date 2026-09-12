@@ -81,6 +81,11 @@ const loginSchema = z.object({
   identifier: z.string().min(1, " معرّف الدخول مطلوب").max(300),
   password: z.string().min(1, "كلمة المرور مطلوبة للدخول").max(72),
 });
+const deviceTokenSchema = z.object({
+  device_token:z
+  .string()
+  .min(1, "FCM Token مطلوب")
+})
 const resetPasswordSchema = baseSchema
   .pick({
     password: true,
@@ -109,4 +114,5 @@ export {
   resetPasswordSchema,
   enterEmailSchema,
   enterOtpSchema,
+  deviceTokenSchema,
 };

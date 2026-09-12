@@ -30,7 +30,6 @@ type Bindings = {
     canzo_KV:KVNamespace
     GOOGLE_CLIENT_ID: string
 }
-console.log("sign up started");
 
 const authRouter = new Hono<{Bindings:Bindings}>()
 .post("/client/signup",

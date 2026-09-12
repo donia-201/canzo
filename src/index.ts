@@ -9,6 +9,7 @@ import googleRouter from "./routes/google"
 import { clientWithdrawRouter, adminWithdrawRouter } from "./routes/withdrawal"
 import {prettyJSON} from "hono/pretty-json"
 import verifyRole from "./middlewares/verifyRole"
+import {deviceTokenRouter } from "./routes/deviceToken"
 type Bindings = {
     JWT_SECRET: string; 
 }
@@ -35,5 +36,6 @@ app.route("/api/client/", clientWithdrawRouter)
 app.route("/api/client/", profileRouter)
 app.route("/api/admin/", adminWithdrawRouter)
 app.route("/",imageRouter)
+app.route("/api/", deviceTokenRouter)
 
 export default app
