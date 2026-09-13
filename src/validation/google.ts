@@ -14,7 +14,7 @@ const setupProfileSchema = z.object({
         .string()
         .min(1, 'رقم الهاتف مطلوب')
         .regex(/^01[0125][0-9]{8}$/, 'رقم الهاتف غير صالح'),
-    activityType: z.enum(['Wedding hall', 'Restaurant', 'Cafe', 'Club'], {
+    activityType: z.enum(['Wedding hall', 'Restaurant', 'Cafe', 'Club' , 'Other'], {
         message: 'نوع النشاط يجب أن يكون أحد الخيارات التالية: قاعة أفراح، مطعم، كافيه، أو نادي',
     }),
     activityName: z

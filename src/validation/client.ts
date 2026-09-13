@@ -36,7 +36,7 @@ const updateProfileSchema = z.object({
         .max(255, 'العنوان طويل جداً')
         .optional(),
     activityType: z
-        .enum(['Wedding hall', 'Restaurant', 'Cafe', 'Club'], {
+        .enum(['Wedding hall', 'Restaurant', 'Cafe', 'Club' , 'Other'], {
             message: 'نوع النشاط يجب أن يكون أحد الخيارات التالية: قاعة أفراح، مطعم، كافيه، أو نادي',
         })
         .optional(),

@@ -151,8 +151,11 @@ async function uploadToCloudinary(
     if (!cloudName  || !apiKey || !apiSecret) {
         console.error('CLOUDINARY CONFIG ERROR:', {
             cloudNameExists: !!cloudName,
+            cloudName,
             apiKeyExists: !!apiKey,
+            apiKey,
             apiSecretExists: !!apiSecret,
+             apiSecretLength :apiSecret?.length,
         })
 
         throw new Error('إعدادات Cloudinary غير مكتملة')
