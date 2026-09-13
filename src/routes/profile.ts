@@ -26,7 +26,7 @@ profileRouter.get("/profile", async (c) => {
         const { userId } = c.get("jwtPayload") as TokenPayload
         const profile = await c.env.DB.prepare(
             "SELECT u.email, u.user_name AS username, u.user_role, u.phone_number AS phoneNumber, c.address,c.activity_name as activityName,c.activity_type AS activityType FROM users u JOIN clients c ON u.id = c.user_id WHERE u.id = ?1"
-        ).bind(userId).first<{ email: string, username: string, user_role: string, phoneNumber: string, address: string, activityName: string, activityType: string }>()
+        ).bind(userId).first<{ email: string, username: string, user_role: string, phoneNumber: string , address: string, activityName: string, activityType: string }>()
         return c.json({ profile ,userId})
     } catch (error) {
         console.error(`error while getting profile ${error}`)

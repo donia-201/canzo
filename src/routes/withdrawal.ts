@@ -144,16 +144,16 @@ async function uploadToCloudinary(
     file: File,
     cloudName: string,
     apiKey: string,
-    apiSecret: string
+    apiSecret: string,
+    id: number,
+    user_role: string
 ): Promise<string> {
 
     // CHANGE: Validate Cloudinary configuration.
     if (!cloudName  || !apiKey || !apiSecret) {
         console.error('CLOUDINARY CONFIG ERROR:', {
             cloudNameExists: !!cloudName,
-            cloudName,
             apiKeyExists: !!apiKey,
-            apiKey,
             apiSecretExists: !!apiSecret,
              apiSecretLength :apiSecret?.length,
         })
@@ -166,8 +166,11 @@ async function uploadToCloudinary(
 
     const formData = new FormData()
     formData.append('file', file)
+
     console.log('cloudinary config debbud:',{
         cloudName, apiKey,
+        apiSecret,
+        id , user_role
     })
 
     const response = await fetch(
