@@ -11,6 +11,7 @@ import {prettyJSON} from "hono/pretty-json"
 import verifyRole from "./middlewares/verifyRole"
 import deviceTokenRouter  from "./routes/deviceToken"
 import testNotificationRouter from './routes/testNotification';
+import { errorHandler } from './middlewares/errorHandler';
 type Bindings = {
     JWT_SECRET: string; 
     FIREBASE_PROJECT_ID: string;
@@ -20,6 +21,7 @@ type Bindings = {
 
 const app = new Hono<{Bindings:Bindings}>()
 app.use(prettyJSON())
+app.onError(errorHandler)
 
 
 app.use("/api/*",(c,next)=>{

@@ -12,8 +12,7 @@ const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 async function getFirebaseAccessToken(env: FirebaseEnv): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
 
-  // Firebase/Google private key sometimes comes with literal \n
-  // instead of real line breaks.
+  
   const privateKey = env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n");
 
   const cryptoKey = await importPKCS8(privateKey, "RS256");
@@ -75,7 +74,7 @@ export async function sendFirebasePush(
     {
       method: "POST",
       headers: {
-        Authorization:` Bearer ${accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

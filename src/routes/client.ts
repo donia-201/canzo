@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { JwtVariables } from "hono/jwt";
 import {zValidator} from "@hono/zod-validator"
 import {arrayBasketsSchema} from "../validation/client"
+import { getLanguage, label, activityTypeLabels, statusLabels, localized } from "../utils/i18n"
 //client schema
 type Client = {
     user_id: number
@@ -74,27 +75,27 @@ clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
   const unMappedBaskets = c.req.valid("json")
    const user = await c.env.DB.prepare("SELECT activity_type FROM clients WHERE user_id = ?1").bind(userId).first<Client>()
    if(!user){
-      return c.json({error:"العميل غير موجود"},404)
+      return c.json({error:localized(c,"العميل غير موجود","Client not found")},404)
    }
 
 // Check if user is requesting water (Plastic) but is not a Wedding hall
    const filteredBaskets = unMappedBaskets.filter((b) => {
           if (b.content_type === "Plastic" && user.activity_type !== "Wedding hall") {
-            return false; // استبعاد المياه إذا لم يكن العميل قاعة أفراح
+            return false; // المياه متاحة لقاعات الأفراح فقط
           }
           return true;
         });
 
         if (filteredBaskets.length === 0) {
           return c.json(
-            { error: "طلب المياه متاح حالياً لقاعات الأفراح فقط" },
+            { error: localized(c, "المياه متاحة حالياً لقاعات الأفراح فقط", "Water is currently available for wedding halls only") },
             400
           );
         }
 
 
  const baskets: { content_type: string; content_weight: number; price: number }[] = []
-  for (const b of unMappedBaskets) {
+  for (const b of filteredBaskets) {
     const pricePerKg = await c.env.DB
       .prepare("SELECT price_per_kg FROM pricing WHERE material = ?1 AND activity_type = ?2")
       .bind(b.content_type, user.activity_type)
@@ -103,7 +104,7 @@ clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
     if (!pricePerKg) {
       return c.json(
         {
-          error: `No pricing for material "${b.content_type}" and activity "${user.activity_type}". Run db/seed-pricing.sql on your D1 database.`,
+          error: localized(c, `لا يوجد سعر للمادة ${b.content_type} لهذا النشاط.`, `No pricing is configured for ${b.content_type} for this activity.`),
         },
         400
       )
@@ -196,7 +197,7 @@ const {userId,user_role} = c.get("jwtPayload") as TokenPayload
 const status = c.req.param("status")
 const OrderStatus = ["Pending","Completed","Cancelled"]
 if(!OrderStatus.includes(status)){
-    return c.json({error:"Invalid status"},400)
+    return c.json({error:localized(c,"حالة الطلب غير صحيحة","Invalid order status")},400)
 }
 let orders;
 if (status === "Pending") {
@@ -234,7 +235,8 @@ if (status === "Pending") {
   )
 
   orders = ordersWithItems
-  return c.json({orders})
+  const lang=getLanguage(c)
+  return c.json({orders:orders.map((o:any)=>({...o,status_label:label(statusLabels,o.status,lang)}))})
 } else {
   orders = await c.env.DB.prepare(`
     SELECT o.id, o.price, o.status, o.created_at, c.address
@@ -243,7 +245,7 @@ if (status === "Pending") {
     WHERE o.client_id = ?1 AND o.status = 'Cancelled'
   `).bind(userId).all()
 }
-return c.json({orders:orders.results})
+return c.json({orders:orders.results.map((o:any)=>({...o,status_label:label(statusLabels,o.status,getLanguage(c))}))})
     }catch(error){
         console.error(`error while getting orders ${error}`)
         throw error
@@ -251,15 +253,17 @@ return c.json({orders:orders.results})
 }).get("/transactions",async(c)=>{
     try{    
 const {userId} = c.get("jwtPayload") as TokenPayload
-const allTransactions = await c.env.DB.prepare("SELECT t.id,t.amount,t.created_at,t.screenshot_path,u.user_name as username FROM transactions t JOIN users u ON t.client_id = u.id WHERE t.client_id = ?1").bind(userId).all<Transaction>()
-const lastMonthTransactions = await c.env.DB.prepare("SELECT t.id,t.amount,t.created_at,t.screenshot_path,u.user_name as username FROM transactions t JOIN users u ON t.client_id = u.id WHERE t.client_id = ?1 AND t.created_at >= date('now', '-1 month')").bind(userId).all<Transaction>()
-const lastWeekTransactions = await c.env.DB.prepare("SELECT t.id,t.amount,t.created_at,t.screenshot_path,u.user_name as username FROM transactions t JOIN users u ON t.client_id = u.id WHERE t.client_id = ?1 AND t.created_at >= date('now', '-7 days')").bind(userId).all<Transaction>()
-const todayTransactions = await c.env.DB.prepare("SELECT t.id,t.amount,t.created_at,t.screenshot_path,u.user_name as username FROM transactions t JOIN users u ON t.client_id = u.id WHERE t.client_id = ?1 AND t.created_at >= date('now', 'start of day')").bind(userId).all<Transaction>()
+const lang = getLanguage(c)
+const allTransactions = await c.env.DB.prepare("SELECT t.id,t.amount,t.created_at,t.screenshot_path,t.status,t.note,u.user_name as username FROM transactions t JOIN users u ON t.client_id = u.id WHERE t.client_id = ?1 ORDER BY t.created_at DESC").bind(userId).all<any>()
+const lastMonthTransactions = await c.env.DB.prepare("SELECT t.id,t.amount,t.created_at,t.screenshot_path,t.status,t.note,u.user_name as username FROM transactions t JOIN users u ON t.client_id = u.id WHERE t.client_id = ?1 AND t.created_at >= date('now', '-1 month')").bind(userId).all<Transaction>()
+const lastWeekTransactions = await c.env.DB.prepare("SELECT t.id,t.amount,t.created_at,t.screenshot_path,t.status,t.note,u.user_name as username FROM transactions t JOIN users u ON t.client_id = u.id WHERE t.client_id = ?1 AND t.created_at >= date('now', '-7 days')").bind(userId).all<Transaction>()
+const todayTransactions = await c.env.DB.prepare("SELECT t.id,t.amount,t.created_at,t.screenshot_path,t.status,t.note,u.user_name as username FROM transactions t JOIN users u ON t.client_id = u.id WHERE t.client_id = ?1 AND t.created_at >= date('now', 'start of day')").bind(userId).all<Transaction>()
 const totalEarnings = await c.env.DB.prepare("SELECT SUM(amount) as total FROM transactions WHERE client_id = ?1").bind(userId).first<{ total: number }>()
-return c.json({allTransactions:allTransactions.results,
-    lastMonthTransactions:lastMonthTransactions.results,
-    lastWeekTransactions:lastWeekTransactions.results,
-    todayTransactions:todayTransactions.results,
+const mapTransaction=(t:any)=>({...t,status_label:label(statusLabels,t.status,lang)})
+return c.json({allTransactions:allTransactions.results.map(mapTransaction),
+    lastMonthTransactions:lastMonthTransactions.results.map(mapTransaction),
+    lastWeekTransactions:lastWeekTransactions.results.map(mapTransaction),
+    todayTransactions:todayTransactions.results.map(mapTransaction),
     totalEarnings:totalEarnings})
     }catch(error){
         console.error(`error while getting transactions ${error}`)
@@ -304,10 +308,11 @@ return c.json({wallet})
     try {
         const { userId } = c.get("jwtPayload") as TokenPayload
 
+        const lang = getLanguage(c)
         const notifications = await c.env.DB.prepare(
-            "SELECT id, message, is_read, created_at FROM notifications WHERE recipient_id = ?1 AND recipient_type = 'Client' ORDER BY created_at DESC"
+            "SELECT id, CASE WHEN ?2 = 'en' AND message_en IS NOT NULL THEN message_en ELSE message END AS message, is_read, created_at FROM notifications WHERE recipient_id = ?1 AND recipient_type = 'Client' ORDER BY created_at DESC"
         )
-        .bind(userId)
+        .bind(userId,lang)
         .all()
 
         return c.json({ notifications: notifications.results }, 200)

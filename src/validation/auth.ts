@@ -43,40 +43,13 @@ const clientSignupSchema = refinedBaseSchema
     ),
     activityName: z
       .string()
+      .trim()
       .max(50, "اسم النشاط طويل للغاية")
       .min(1, "اسم النشاط مطلوب"),
-    // customBusinessType: z
-    //   .string()
-    //   .max(255, "اسم النشاط طويل للغاية")
-    //   .optional(),
+
   });
-  // .refine(
-  //   (data) => {
-  //     if (data.activityType === "Other") {
-  //       return (
-  //       !!data.customBusinessType && data.customBusinessType.trim().length > 0
-  //       );
-  //     }
-  //     return true;
-  //   },
-  //   {
-  //     message: "نوع النشاط المخصص مطلوب عند اختيار  other",
-  //     path: ["customBusinessType"],
-  //   }
-  // )
-  // .refine(
-  //   (data) => {
-  //     if (data.activityType !== "Other") {
-  //       return !data.customBusinessType;
-  //     }
-  //     return true;
-  //   },
-  //   {
-  //     message:
-  //       "يجب إدخال نوع النشاط المخصص فقط عند إختيار خيار آخر",
-  //     path: ["customBusinessType"],
-  //   }
-  // );
+  
+
 const loginSchema = z.object({
   identifier: z.string().min(1, " معرّف الدخول مطلوب").max(300),
   password: z.string().min(1, "كلمة المرور مطلوبة للدخول").max(72),

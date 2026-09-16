@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { updateProfileSchema, passwordSchema } from "../validation/client";
 import bcrypt from "bcryptjs";
+import { getLanguage, label, activityTypeLabels, localized } from "../utils/i18n";
 
 type TokenPayload = {
     userId: number;
@@ -27,6 +28,14 @@ profileRouter.get("/profile", async (c) => {
         const profile = await c.env.DB.prepare(
             "SELECT u.email, u.user_name AS username, u.user_role, u.phone_number AS phoneNumber, c.address,c.activity_name as activityName,c.activity_type AS activityType FROM users u JOIN clients c ON u.id = c.user_id WHERE u.id = ?1"
         ).bind(userId).first<{ email: string, username: string, user_role: string, phoneNumber: string , address: string, activityName: string, activityType: string }>()
+        if (profile) {
+            const lang = getLanguage(c)
+            ;(profile as any).activityTypeLabel = label(activityTypeLabels, profile.activityType, lang)
+        }
+        if (profile) {
+            const lang = getLanguage(c)
+            ;(profile as any).activityTypeLabel = label(activityTypeLabels, profile.activityType, lang)
+        }
         return c.json({ profile ,userId})
     } catch (error) {
         console.error(`error while getting profile ${error}`)
@@ -53,7 +62,7 @@ profileRouter.get("/profile", async (c) => {
             return field === "address" || field === "activityType" || field === "activityName" ? "clients" : "users"
         }
         if (keys.length === 0) {
-            return c.json({ error: "At least one field must be provided to update profile" }, 400)
+            return c.json({ error: localized(c, "يجب إرسال حقل واحد على الأقل لتعديل الملف الشخصي", "At least one field must be provided to update profile") }, 400)
         }
         const uniqueFields = ["phoneNumber", "email"] as const;
         for (const field of uniqueFields) {

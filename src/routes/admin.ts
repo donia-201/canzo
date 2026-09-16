@@ -1,6 +1,7 @@
 import {Hono} from 'hono';
 import { creditWallet } from '../services/wallet';
 import {AppError } from '../middlewares/errorHandler';
+import { getLanguage, label, activityTypeLabels, statusLabels, localized } from '../utils/i18n';
 
 //types
 type ClientsWithDetails = {
@@ -8,6 +9,7 @@ type ClientsWithDetails = {
     email: string
     user_name: string
     phone_number: string
+    address: string
     activity_type: string
     activity_name: string
 }
@@ -56,7 +58,7 @@ type TokenPayload = {
 const adminRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
 .get("/orders",async(c)=>{
     const status = c.req.query("status")
-    if(status && status !=="Pending" ) return c.json({error:"Invalid status"},400)
+    if(status && status !=="Pending" ) return c.json({error:localized(c,"حالة الطلب غير صحيحة","Invalid order status")},400)
         try{
                if (status === "Pending"){
       const orders = await c.env.DB.prepare("SELECT o.id,o.price, u.user_name,c.address,u.phone_number,o.created_at,o.status ,COUNT(b.id) AS baskets_count, SUM(b.content_weight) AS total_weight ,COUNT(CASE WHEN b.content_type = 'Plastic' THEN 1 END) AS plastic_count ,COUNT(CASE WHEN b.content_type = 'Canz' THEN 1 END) AS canz_count FROM orders o JOIN users u ON o.client_id = u.id LEFT JOIN baskets b ON o.id = b.order_id JOIN clients c ON o.client_id = c.user_id WHERE o.status = 'Pending' GROUP BY u.user_name,o.created_at,o.status,c.address,u.phone_number,o.id,o.price").all<OrderWithDetails>()
@@ -154,8 +156,10 @@ return c.json({chart:daysSoldPerDay,materialsWeightSoldThisWeek:materialsWeightS
     }
 }).get("/client-list",async(c)=>{
   try{
-    const users = await c.env.DB.prepare("SELECT u.id,u.email,u.user_name,u.phone_number,c.activity_type,c.activity_name,COUNT(CASE WHEN o.status = 'Completed' THEN o.id END) as completed_orders ,COUNT(CASE WHEN o.status = 'Cancelled' THEN o.id END) as cancelled_orders,COUNT(CASE WHEN o.status = 'Pending' THEN o.id END) as pending_orders,COUNT(t.id) as transaction_count,COALESCE(SUM(t.amount), 0) as total_profits FROM users u LEFT JOIN transactions t ON u.id = t.client_id JOIN clients c ON u.id = c.user_id LEFT JOIN orders o ON u.id = o.client_id GROUP BY u.id,u.email,u.user_name,u.phone_number,c.activity_type,c.activity_name").all<ClientsWithDetails>();
-    return c.json({users:users.results},200)
+    const lang=getLanguage(c)
+    const users = await c.env.DB.prepare(`SELECT u.id,u.email,u.user_name,u.phone_number,c.address,c.activity_type,c.activity_name,COALESCE(o.completed_orders,0) completed_orders,COALESCE(o.cancelled_orders,0) cancelled_orders,COALESCE(o.pending_orders,0) pending_orders,COALESCE(t.transaction_count,0) transaction_count,COALESCE(t.total_profits,0) total_profits FROM users u JOIN clients c ON u.id=c.user_id LEFT JOIN (SELECT client_id,COUNT(CASE WHEN status='Completed' THEN 1 END) completed_orders,COUNT(CASE WHEN status='Cancelled' THEN 1 END) cancelled_orders,COUNT(CASE WHEN status='Pending' THEN 1 END) pending_orders FROM orders GROUP BY client_id) o ON o.client_id=u.id LEFT JOIN (SELECT client_id,COUNT(*) transaction_count,COALESCE(SUM(amount),0) total_profits FROM transactions GROUP BY client_id) t ON t.client_id=u.id ORDER BY u.id DESC`).all<any>();
+    const localizedUsers=users.results.map((u:any)=>({...u,activity_type_label:label(activityTypeLabels,u.activity_type,lang)}));
+    return c.json({users:localizedUsers},200)
   }catch(error){
     console.error(`error while getting clients ${error}`)
         throw error
@@ -202,10 +206,11 @@ return c.json({chart:daysSoldPerDay,materialsWeightSoldThisWeek:materialsWeightS
         console.log("ADMIN NOTIFICATIONS USER ID:", userId);
 
         // CHANGE: Admin notifications always use recipient_type = 'Admin'.
+        const lang = getLanguage(c);
         const notifications = await c.env.DB.prepare(
-            "SELECT id, message, is_read, created_at FROM notifications WHERE recipient_id = ?1 AND recipient_type = 'Admin' ORDER BY created_at DESC"
+            "SELECT id, CASE WHEN ?2 = 'en' AND message_en IS NOT NULL THEN message_en ELSE message END AS message, is_read, created_at FROM notifications WHERE recipient_id = ?1 AND recipient_type = 'Admin' ORDER BY created_at DESC"
         )
-            .bind(userId)
+            .bind(userId, lang)
             .all();
 
         console.log(

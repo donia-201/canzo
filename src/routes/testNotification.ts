@@ -65,7 +65,7 @@ console.log("Firebase client email exists:", !!c.env.FIREBASE_CLIENT_EMAIL);
       c.env,
       user.fcm_token,
       "Canzo",
-      "دي رسالة Push تجريبية 🔔",
+      " push notification test from back end",
       {
         type: "withdrawal",
         withdraw_id: "7",

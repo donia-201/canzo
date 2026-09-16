@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     recipient_id INTEGER NOT NULL,
     recipient_type TEXT NOT NULL CHECK(recipient_type IN ('Admin', 'Client')),
     message TEXT NOT NULL,
+    message_en TEXT,
     is_read BOOLEAN NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT (datetime('now')),
     FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE

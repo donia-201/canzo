@@ -10,7 +10,9 @@ const addBasketSchema = z.object({
         .max(15, 'الوزن الأقصى المسموح به هو 15'),
     amount: z
         .number({ message: 'الكمية يجب أن تكون رقماً' })
-        .positive('الكمية يجب أن تكون رقماً موجباً'),
+        .positive('الكمية يجب أن تكون رقماً موجباً')
+        .int('الكمية يجب أن تكون رقماً صحيحاً')
+        .max(100, 'الكمية لا يجب أن تتجاوز 100 سلة في الطلب الواحد'),
 })
 
 const arrayBasketsSchema = z.array(addBasketSchema)
@@ -37,7 +39,7 @@ const updateProfileSchema = z.object({
         .optional(),
     activityType: z
         .enum(['Wedding hall', 'Restaurant', 'Cafe', 'Club' , 'Other'], {
-            message: 'نوع النشاط يجب أن يكون أحد الخيارات التالية: قاعة أفراح، مطعم، كافيه، أو نادي',
+            message: 'نوع النشاط يجب أن يكون أحد الخيارات التالية: قاعة أفراح، مطعم، كافيه، أو نادي أو آخر',
         })
         .optional(),
     activityName: z
