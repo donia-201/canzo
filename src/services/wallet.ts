@@ -35,7 +35,11 @@ export async function creditWallet(db:D1Database,userId:number,amount:number) {
   if(r.meta.changes===0) throw new WalletServiceError('WALLET_LOCK_FAILED','فشل تحديث رصيد المحفظة')
 }
 
-export async function createWithdrawalRequest(db:D1Database,userId:number,amount:number,walletNumber:string,walletType:string):Promise<number> {
+export async function createWithdrawalRequest(db:D1Database,userId:number,amount:number,walletNumber:string,walletType:string, firebaseEnv:{
+  FIREBASE_PROJECT_ID:string
+  FIREBASE_CLIENT_EMAIL:string
+  FIREBASE_PRIVATE_KEY:string
+}):Promise<number> {
   if(amount<=0) throw new WalletServiceError('INVALID_AMOUNT','المبلغ يجب أن يكون أكبر من الصفر')
   await ensureWallet(db,userId)
   const pending=await db.prepare("SELECT id FROM withdrawal_requests WHERE user_id=?1 AND status='Pending' LIMIT 1").bind(userId).first<{id:number}>()
@@ -62,9 +66,31 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
   if(!withdrawalId) throw new WalletServiceError('WALLET_LOCK_FAILED','فشل إنشاء طلب السحب')
 
   try {
-    const ar=notificationText('withdrawal_admin',withdrawalId,'ar',{name:requesterName,amount,walletType,walletNumber})
-    const en=notificationText('withdrawal_admin',withdrawalId,'en',{name:requesterName,amount,walletType,walletNumber})
+    const ar=notificationText('withdrawal_admin',withdrawalId,'ar',{name:requesterName,amount,
+      walletType,walletNumber})
+    const en=notificationText('withdrawal_admin',withdrawalId,'en',
+      {name:requesterName,amount,walletType,walletNumber})
     await db.prepare("INSERT INTO notifications (recipient_id,recipient_type,message,message_en) SELECT id,'Admin',?1,?2 FROM users WHERE user_role='Admin'").bind(ar,en).run()
+    const admins= await db.prepare(`
+      SELECT id,fcm_token FROM users WHERE user_role='Admin' AND fcm_token IS NOT NULL AND fcm_token!=" `).all<{
+        id:number; fcm_token:string}>()
+        for(const admin of admins.results??[]){
+          try{
+            await sendFirebasePush(
+              firebaseEnv,
+              admin.fcm_token,
+              'Canzo',
+              ar,{
+                type:'withdrawal',
+                withdrawa_id: String(withdrawalId)
+              }
+            )
+          }catch(e){
+            console.error(
+              `ADMIN_WITHDRAWAL_PUSH_ERROR_${admin.id}: `, e
+            )
+          }
+        }
   } catch(e) { console.error('WITHDRAWAL_NOTIFICATION_CREATE_ERROR:',e) }
   return withdrawalId
 }

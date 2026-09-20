@@ -53,7 +53,7 @@ async function getFirebaseAccessToken(env: FirebaseEnv): Promise<string> {
     throw new Error(
       result.error_description ||
       result.error ||
-      "فشل الحصول على Firebase Access Token"
+      " Failed to get Firebase Access Token"
     );
   }
 
@@ -97,7 +97,7 @@ export async function sendFirebasePush(
   if (!response.ok) {
     console.error("Firebase push error:", result);
 
-    throw new Error("فشل إرسال Push Notification");
+    throw new Error("Push Notification failed");
   }
 
   console.log("Firebase push sent successfully:", result);

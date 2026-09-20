@@ -234,16 +234,5 @@ return c.json({chart:daysSoldPerDay,materialsWeightSoldThisWeek:materialsWeightS
         throw error;
     }
 })
-//.get("/notifications", async (c) => {
-//     try {
-//         const { userId, user_role } = c.get("jwtPayload") as TokenPayload;
-//         const notifications = await c.env.DB.prepare(
-//             "SELECT id, message, is_read, created_at FROM notifications  WHERE recipient_id = ?1 AND recipient_type = ?2 ORDER BY created_at DESC"
-//         ).bind(userId, user_role).all();
-//         return c.json({ notifications: notifications.results });
-//     } catch (error) {
-//         console.error(`error while getting notifications ${error}`)
-//         throw error
-//     }
-// })
+
 export default adminRouter
