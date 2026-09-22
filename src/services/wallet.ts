@@ -96,7 +96,7 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
               'Canzo',
               ar,{
                 type:'withdrawal',
-                withdrawal_id: String(withdrawalId)
+                withdrawa_id: String(withdrawalId)
               }
             )
           }catch(e){
