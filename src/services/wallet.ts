@@ -66,13 +66,27 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
   if(!withdrawalId) throw new WalletServiceError('WALLET_LOCK_FAILED','فشل إنشاء طلب السحب')
 
   try {
-    const ar=notificationText('withdrawal_admin',withdrawalId,'ar',{name:requesterName,amount,
-      walletType,walletNumber})
-    const en=notificationText('withdrawal_admin',withdrawalId,'en',
-      {name:requesterName,amount,walletType,walletNumber})
-    await db.prepare("INSERT INTO notifications (recipient_id,recipient_type,message,message_en) SELECT id,'Admin',?1,?2 FROM users WHERE user_role='Admin'").bind(ar,en).run()
+    const messageAr =
+  طلب سحب جديد #${withdrawalId}\n +
+  العميل: ${userName}\n +
+  المبلغ: ${amount} جنيه\n +
+  نوع المحفظة: ${walletTypeLabelAr}\n +
+  رقم المحفظة: ${walletNumber};
+
+   const messageEn =
+  New withdrawal request #${withdrawalId}\n +
+  Client: ${userName}\n +
+  Amount: ${amount} EGP\n +
+  Wallet type: ${walletTypeLabelEn}\n +
+  Wallet number: ${walletNumber};
+    await db.prepare(`INSERT INTO notifications (recipient_id,recipient_type,message,message_en) SELECT id,'Admin',?1,?2 FROM users WHERE user_role='Admin'AND fcm_token IS NOT NULL
+    AND TRIM(fcm_token) != " `
+).bind(
+  messageAr,
+  messageEn
+).run()
     const admins= await db.prepare(`
-      SELECT id,fcm_token FROM users WHERE user_role='Admin' AND fcm_token IS NOT NULL AND fcm_token!=" `).all<{
+      SELECT id,fcm_token FROM users WHERE user_role='Admin' AND fcm_token IS NOT NULL AND TRIM(fcm_token)!= " `).all<{
         id:number; fcm_token:string}>()
         for(const admin of admins.results??[]){
           try{
@@ -82,7 +96,7 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
               'Canzo',
               ar,{
                 type:'withdrawal',
-                withdrawa_id: String(withdrawalId)
+                withdrawal_id: String(withdrawalId)
               }
             )
           }catch(e){

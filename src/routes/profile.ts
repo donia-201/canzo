@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { updateProfileSchema, passwordSchema } from "../validation/client";
 import bcrypt from "bcryptjs";
-import { getLanguage, label, activityTypeLabels, localized } from "../utils/i18n";
+import { getLanguage, label, activityTypeLabels, localized, localizedError, validationMessage } from "../utils/i18n";
 
 type TokenPayload = {
     userId: number;
@@ -43,7 +43,7 @@ profileRouter.get("/profile", async (c) => {
     }
 })
 .patch("/profile", zValidator("json", updateProfileSchema, (result, c) => {
-    if (!result.success) return c.json({ error: result.error.issues[0].message }, 400)
+    if (!result.success) return c.json({ success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))} }, 400)
 }), async (c) => {
     try {
         const { userId } = c.get("jwtPayload") as TokenPayload
@@ -62,7 +62,7 @@ profileRouter.get("/profile", async (c) => {
             return field === "address" || field === "activityType" || field === "activityName" ? "clients" : "users"
         }
         if (keys.length === 0) {
-            return c.json({ error: localized(c, "يجب إرسال حقل واحد على الأقل لتعديل الملف الشخصي", "At least one field must be provided to update profile") }, 400)
+            return c.json({ success:false,error:{code:"VALIDATION_ERROR",message:localizedError(c,"PROFILE_FIELD_REQUIRED")} }, 400)
         }
         const uniqueFields = ["phoneNumber", "email"] as const;
         for (const field of uniqueFields) {
@@ -71,7 +71,10 @@ profileRouter.get("/profile", async (c) => {
                     .prepare(`SELECT id FROM users WHERE ${record[field as keyof typeof record]} = ? AND id != ?`)
                     .bind(body[field], userId)
                     .first();
-                if (existing) return c.json({ error: `${field} مستخدم بالفعل` }, 409);
+                if (existing) {
+                    const code = field === "email" ? "EMAIL_ALREADY_EXISTS" : "PHONE_ALREADY_EXISTS"
+                    return c.json({ success:false,error:{code,message:localizedError(c,code)} }, 409)
+                }
             }
         }
         const statements = keys.map(key => {
@@ -86,18 +89,18 @@ profileRouter.get("/profile", async (c) => {
         throw error
     }
 }).patch("/password", zValidator("json", passwordSchema, (result, c) => {
-    if (!result.success) return c.json({ error: result.error.issues[0].message }, 400)
+    if (!result.success) return c.json({ success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))} }, 400)
 }), async (c) => {
     try {
         const { userId } = c.get("jwtPayload") as TokenPayload
         const body = c.req.valid("json")
         const user = await c.env.DB.prepare("SELECT password_hash FROM users WHERE id = ?1").bind(userId).first<{ password_hash: string }>()
-        if (!user) return c.json({ error: "المستخدم غير موجود" }, 404)
+        if (!user) return c.json({ success:false,error:{code:"USER_NOT_FOUND",message:localizedError(c,"USER_NOT_FOUND")} }, 404)
         const isPasswordValid = await bcrypt.compare(body.oldPassword, user.password_hash)
-        if (!isPasswordValid) return c.json({ error: "كلمة المرور غير صحيحة" }, 401)
+        if (!isPasswordValid) return c.json({ success:false,error:{code:"INVALID_PASSWORD",message:localizedError(c,"INVALID_PASSWORD")} }, 401)
         const password_hash = await bcrypt.hash(body.newPassword, 10)
         await c.env.DB.prepare("UPDATE users SET password_hash = ?1, updated_at = datetime('now') WHERE id = ?2").bind(password_hash, userId).run()
-        return c.json({ message: "تم تغيير كلمة المرور بنجاح" }, 200)
+        return c.json({ message: localized(c,"تم تغيير كلمة المرور بنجاح","Password changed successfully") }, 200)
     } catch (error) {
         console.error(`error while updating password ${error}`)
         throw error

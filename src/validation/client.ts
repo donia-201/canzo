@@ -1,70 +1,42 @@
 import { z } from 'zod'
 
 const addBasketSchema = z.object({
-    content_type: z.enum(['Plastic', 'Canz'], {
-        message: 'نوع المحتوى يجب أن يكون Plastic أو Canz',
-    }),
-    content_weight: z
-        .number({ message: 'الوزن يجب أن يكون رقماً' })
-        .positive('الوزن يجب أن يكون رقماً موجباً')
-        .max(15, 'الوزن الأقصى المسموح به هو 15'),
-    amount: z
-        .number({ message: 'الكمية يجب أن تكون رقماً' })
-        .positive('الكمية يجب أن تكون رقماً موجباً')
-        .int('الكمية يجب أن تكون رقماً صحيحاً')
-        .max(100, 'الكمية لا يجب أن تتجاوز 100 سلة في الطلب الواحد'),
+  content_type: z.enum(['Plastic', 'Canz'], { message: 'CONTENT_TYPE_INVALID' }),
+  content_weight: z.number({ message: 'WEIGHT_NUMBER' })
+    .positive('WEIGHT_POSITIVE')
+    .max(15, 'WEIGHT_MAX'),
+  amount: z.number({ message: 'QUANTITY_NUMBER' })
+    .positive('QUANTITY_POSITIVE')
+    .int('QUANTITY_INTEGER')
+    .max(100, 'QUANTITY_MAX'),
 })
 
 const arrayBasketsSchema = z.array(addBasketSchema)
 
 const updateProfileSchema = z.object({
-    username: z
-        .string()
-        .min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل')
-        .max(50, 'اسم المستخدم يجب ألا يتجاوز 50 حرفاً')
-        .optional(),
-    email: z
-        .string()
-        .email('البريد الإلكتروني غير صالح')
-        .max(300, 'البريد الإلكتروني طويل جداً')
-        .optional(),
-    phoneNumber: z
-        .string()
-        .regex(/^01[0125][0-9]{8}$/, 'رقم الهاتف غير صالح')
-        .optional(),
-    address: z
-        .string()
-        .min(10, 'العنوان قصير جداً')
-        .max(255, 'العنوان طويل جداً')
-        .optional(),
-    activityType: z
-        .enum(['Wedding hall', 'Restaurant', 'Cafe', 'Club' , 'Other'], {
-            message: 'نوع النشاط يجب أن يكون أحد الخيارات التالية: قاعة أفراح، مطعم، كافيه، أو نادي أو آخر',
-        })
-        .optional(),
-    activityName: z
-        .string()
-        .min(1, 'اسم النشاط مطلوب')
-        .max(50, 'اسم النشاط طويل جداً')
-        .optional(),
+  username: z.string().min(3, 'USERNAME_MIN').max(50, 'USERNAME_MAX').optional(),
+  email: z.string().email('EMAIL_INVALID').max(300, 'EMAIL_MAX').optional(),
+  phoneNumber: z.string().regex(/^01[0125][0-9]{8}$/, 'PHONE_INVALID').optional(),
+  address: z.string().min(10, 'ADDRESS_SHORT').max(255, 'ADDRESS_LONG').optional(),
+  activityType: z.enum(['Wedding hall', 'Restaurant', 'Cafe', 'Club', 'Other'], { message: 'ACTIVITY_TYPE_INVALID' }).optional(),
+  activityName: z.string().min(1, 'ACTIVITY_NAME_REQUIRED').max(50, 'ACTIVITY_NAME_LONG').optional(),
+       
 })
 
 const passwordSchema = z
     .object({
-        oldPassword: z.string().min(8, 'كلمة المرور القديمة يجب أن تكون 8 أحرف على الأقل'),
-        newPassword: z
-            .string()
-            .min(1, 'كلمة المرور الجديدة مطلوبة')
-            .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
-            .max(72, 'كلمة المرور يجب ألا تتجاوز 72 حرفاً')
-            .regex(/[A-Z]/, 'كلمة المرور يجب أن تحتوي على حرف كبير واحد على الأقل (A-Z)')
-            .regex(/[a-z]/, 'كلمة المرور يجب أن تحتوي على حرف صغير واحد على الأقل (a-z)')
-            .regex(/[0-9]/, 'كلمة المرور يجب أن تحتوي على رقم واحد على الأقل (0-9)'),
-        confirmPassword: z.string().min(1, 'تأكيد كلمة المرور مطلوب'),
-    })
-    .refine((data) => data.newPassword === data.confirmPassword, {
-        message: 'كلمتا المرور غير متطابقتين',
-        path: ['confirmPassword'],
+oldPassword: z.string().min(8, 'PASSWORD_MIN'),
+  newPassword: z.string()
+    .min(1, 'PASSWORD_REQUIRED')
+    .min(8, 'PASSWORD_MIN')
+    .max(72, 'PASSWORD_MAX')
+    .regex(/[A-Z]/, 'PASSWORD_UPPER')
+    .regex(/[a-z]/, 'PASSWORD_LOWER')
+    .regex(/[0-9]/, 'PASSWORD_NUMBER'),
+  confirmPassword: z.string().min(1, 'CONFIRM_PASSWORD_REQUIRED'),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: 'PASSWORD_MISMATCH',
+  path: ['confirmPassword'],
     })
 
 export { arrayBasketsSchema, updateProfileSchema, passwordSchema }

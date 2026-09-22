@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { deviceTokenSchema } from "../validation/auth";
-
+import { getLanguage, localized, localizedError, validationMessage } from "../utils/i18n";
 type Bindings = {
   DB: D1Database;
   JWT_SECRET: string;
@@ -25,7 +25,8 @@ deviceTokenRouter.post(
     if (!result.success) {
       return c.json(
         {
-          error: result.error.issues[0].message,
+          success:false,
+          error: { code:"VALIDATION_ERROR", message:validationMessage(result.error,getLanguage(c)) },
         },
         400
       );
@@ -39,7 +40,8 @@ deviceTokenRouter.post(
       if (!payload?.userId) {
         return c.json(
           {
-            error: "المستخدم غير مصرح له",
+            success:false,
+            error: { code:"UNAUTHORIZED_USER", message:localizedError(c,"UNAUTHORIZED_USER") },
           },
           401
         );
@@ -57,7 +59,8 @@ deviceTokenRouter.post(
       if (!user) {
         return c.json(
           {
-            error: "المستخدم غير موجود",
+            success:false,
+            error: { code:"USER_NOT_FOUND", message:localizedError(c,"USER_NOT_FOUND") },
           },
           404
         );
@@ -72,7 +75,7 @@ deviceTokenRouter.post(
 
       return c.json(
         {
-          message: "تم تحديث FCM Token بنجاح",
+          message: localized(c,"تم تحديث FCM Token بنجاح","FCM Token updated successfully"),
         },
         200
       );
@@ -80,8 +83,9 @@ deviceTokenRouter.post(
       console.error("Error while updating FCM token:", error);
 
       return c.json(
-        {
-          error: "حدث خطأ أثناء تحديث FCM Token",
+       {
+          success:false,
+          error: { code:"INTERNAL_SERVER_ERROR", message:localizedError(c,"INTERNAL_SERVER_ERROR") },
         },
         500
       );

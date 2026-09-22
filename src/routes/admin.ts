@@ -1,7 +1,7 @@
 import {Hono} from 'hono';
 import { creditWallet } from '../services/wallet';
 import {AppError } from '../middlewares/errorHandler';
-import { getLanguage, label, activityTypeLabels, statusLabels, localized } from '../utils/i18n';
+import { getLanguage, label, activityTypeLabels, statusLabels, localized, localizedError } from '../utils/i18n';
 
 //types
 type ClientsWithDetails = {
@@ -58,7 +58,7 @@ type TokenPayload = {
 const adminRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
 .get("/orders",async(c)=>{
     const status = c.req.query("status")
-    if(status && status !=="Pending" ) return c.json({error:localized(c,"حالة الطلب غير صحيحة","Invalid order status")},400)
+    if(status && status !=="Pending" ) return c.json({success:false,error:{code:"INVALID_ORDER_STATUS",message:localizedError(c,"INVALID_ORDER_STATUS")}},400)
         try{
                if (status === "Pending"){
       const orders = await c.env.DB.prepare("SELECT o.id,o.price, u.user_name,c.address,u.phone_number,o.created_at,o.status ,COUNT(b.id) AS baskets_count, SUM(b.content_weight) AS total_weight ,COUNT(CASE WHEN b.content_type = 'Plastic' THEN 1 END) AS plastic_count ,COUNT(CASE WHEN b.content_type = 'Canz' THEN 1 END) AS canz_count FROM orders o JOIN users u ON o.client_id = u.id LEFT JOIN baskets b ON o.id = b.order_id JOIN clients c ON o.client_id = c.user_id WHERE o.status = 'Pending' GROUP BY u.user_name,o.created_at,o.status,c.address,u.phone_number,o.id,o.price").all<OrderWithDetails>()
@@ -74,7 +74,7 @@ const adminRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
 }).patch("/order/:id",async(c)=>{
     try{
       const id = Number(c.req.param("id"))
-      if(isNaN(id)) return c.json({error:"معرّف الطلب غير موجود"},400)
+      if(isNaN(id)) return c.json({success:false,error:{code:"NOT_FOUND",message:localizedError(c,"NOT_FOUND")}},400)
       
       let status: string | undefined;
       const contentType = c.req.header("content-type") || "";
@@ -87,12 +87,12 @@ const adminRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
       }
 
       if(!status || (status !== "Completed" && status !== "Cancelled")){
-          return c.json({error:"Invalid status"},400)
+          return c.json({success:false,error:{code:"INVALID_ORDER_STATUS",message:localizedError(c,"INVALID_ORDER_STATUS")}},400)
       }
 
       const order = await c.env.DB.prepare("SELECT id,status FROM orders WHERE id = ?1").bind(id).first<{id:number,status:string}>();
       if (!order || order.status !== "Pending" ) {
-          return c.json({ error: "الطلب غير موجود او تم تعديله بالفعل" }, 404);
+          return c.json({success:false,error:{code:"NOT_FOUND",message:localizedError(c,"NOT_FOUND")}},404);
       }
 
       if (status === "Cancelled"){
@@ -100,13 +100,13 @@ const adminRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
               c.env.DB.prepare("UPDATE orders SET status = ?1 WHERE id = ?2").bind(status,id),
               c.env.DB.prepare("UPDATE baskets SET is_full = 0 , order_id = NULL, updated_at = datetime('now') WHERE order_id = ?1").bind(id)
           ])
-          return c.json({message:"تم إلغاء الطلب بنجاح"},200)
+          return c.json({message:localized(c,"تم إلغاء الطلب بنجاح","Order cancelled successfully")},200)
       }
 
       if(status === "Completed"){
           const getBaskets = await c.env.DB.prepare("SELECT id,content_type,content_weight,price FROM baskets WHERE order_id = ?1").bind(id).all<Basket>();
           const orderRow = await c.env.DB.prepare("SELECT client_id, price FROM orders WHERE id = ?1").bind(id).first<{ client_id: number; price: number }>();
-          if (!orderRow) return c.json({ error: "الطلب غير موجود" }, 404);
+          if (!orderRow) return c.json({success:false,error:{code:"NOT_FOUND",message:localizedError(c,"NOT_FOUND")}},404);
 
           const mappedBaskets = getBaskets.results.map((basket: Basket) =>
               c.env.DB.prepare("INSERT INTO sold (content_type,content_weight,total_price,order_id) VALUES(?1,?2,?3,?4)").bind(basket.content_type, basket.content_weight,basket.price,id)
@@ -119,7 +119,7 @@ const adminRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
               c.env.DB.prepare("UPDATE baskets SET is_full = 0, order_id = NULL, updated_at = datetime('now') WHERE order_id = ?1").bind(id),
           ]);
           await creditWallet(c.env.DB, orderRow.client_id, orderRow.price);
-          return c.json({message:"تم تعديل الطلب بنجاح"},200)   
+          return c.json({message:localized(c,"تم تعديل الطلب بنجاح","Order updated successfully")},200)   
       }
     }catch(error){
         console.error(`error while updating order status ${error}`)

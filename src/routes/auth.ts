@@ -5,6 +5,8 @@ import { zValidator } from "@hono/zod-validator";
 import {jwt,sign} from "hono/jwt"
 import {sendEmail,emailData} from "../servieces/sendingEmails"
 import bcrypt from "bcryptjs"
+import { getLanguage, localized, localizedError, validationMessage } from "../utils/i18n"
+
 //user
 type User = {
     id: number
@@ -35,7 +37,7 @@ const authRouter = new Hono<{Bindings:Bindings}>()
 .post("/client/signup",
    zValidator("json",clientSignupSchema,(result,c)=>{
     if(!result.success){
-        return c.json({error:result.error.issues[0].message},400)
+        return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
     }
    }) 
     ,async(c)=>{
@@ -46,7 +48,7 @@ const authRouter = new Hono<{Bindings:Bindings}>()
     
     const user = await c.env.DB.prepare("SELECT user_name FROM users WHERE email = ?1 OR phone_number = ?2").bind(email,phoneNumber).first<User>()
     if(user){
-        return c.json({error:"User already exists"},409)
+        return c.json({success:false,error:{code:"USER_ALREADY_EXISTS",message:localizedError(c,"USER_ALREADY_EXISTS")}},409)
     }
     // Determine the actual activity type to store
     let finalActivityType: string;
@@ -71,7 +73,7 @@ const authRouter = new Hono<{Bindings:Bindings}>()
         .bind(username,phoneNumber,email,hashedPassword),
         c.env.DB.prepare("INSERT INTO clients (user_id, address, activity_type, activity_name) VALUES (last_insert_rowid(), ?1, ?2, ?3)").bind(address,finalActivityType,activityName)
         ])
-    return c.json({message:"Client registered successfully"},201)
+    return c.json({message:localized(c,"تم تسجيل العميل بنجاح","Client registered successfully")},201)
 }catch(error){
     console.error(`error while registering client ${error}`)
         throw error
@@ -79,29 +81,29 @@ const authRouter = new Hono<{Bindings:Bindings}>()
     }).post("/login",zValidator("json",loginSchema,(result,c)=>{
     
         if(!result.success){
-            return c.json({error:result.error.issues[0].message},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
         }
     }),async(c)=>{
 const {identifier,password} = c.req.valid("json")
 try{
 const result = await c.env.DB.prepare("SELECT password_hash,user_role,id,user_name FROM users WHERE email = ?1 OR phone_number = ?1").bind(identifier).first<User>()
 if(!result){
-    return c.json({error:"Invalid credentials"},401)
+    return c.json({success:false,error:{code:"INVALID_CREDENTIALS",message:localizedError(c,"INVALID_CREDENTIALS")}},401)
 }
 const passwordMatch = await bcrypt.compare(password, result.password_hash)
 if(!passwordMatch){
-    return c.json({error:"Invalid credentials"},401)
+    return c.json({success:false,error:{code:"INVALID_CREDENTIALS",message:localizedError(c,"INVALID_CREDENTIALS")}},401)
 }
 const expirationTime = Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 30); // 30 days
 const token = await sign({userId:result.id,user_role:result.user_role,exp: expirationTime}, c.env.JWT_SECRET, );
-return c.json({message:"Login successful", token,user:{id:result.id,user_role:result.user_role,user_name:result.user_name}});
+return c.json({message:localized(c,"تم تسجيل الدخول بنجاح","Login successful"), token,user:{id:result.id,user_role:result.user_role,user_name:result.user_name}});
 }catch(error){
     console.error(error)
         throw error
 }
     }).post("/forgot-password",zValidator("json",enterEmailSchema,(result,c)=>{
         if(!result.success){
-            return c.json({error:result.error.issues[0].message},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
         }
     }),async(c)=>{
 try{
@@ -109,7 +111,7 @@ const {email} = c.req.valid("json")
 const user = await c.env.DB.prepare("SELECT user_name FROM users WHERE email=?")
 .bind(email).first<User>()
 if(!user){
-    return c.json({error:"User not found"},404)
+    return c.json({success:false,error:{code:"USER_NOT_FOUND",message:localizedError(c,"USER_NOT_FOUND")}},404)
 }
 const otp:string = Math.floor(Math.random() * 1000000).toString().padStart(6, '0')
 const emailData: emailData = {
@@ -123,57 +125,61 @@ const emailData: emailData = {
 await c.env.canzo_KV.delete(`otp:${email}`)
 await c.env.canzo_KV.put(`otp:${email}`,otp,{expirationTtl:300})
 await sendEmail(c.env.BRAVO_API_KEY,emailData,c.env.SENDER_EMAIL)
-return c.json({message:"OTP sent successfully"})
+return c.json({message:localized(c,"تم إرسال رمز التحقق بنجاح","OTP sent successfully")})
 }catch(error){
     console.error(`error while sending otp ${error}`)
         throw error
 }
     }).post("/verify-otp",zValidator("json",enterOtpSchema,(result,c)=>{
         if(!result.success){
-            return c.json({error:result.error.issues[0].message},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
         }
     }),async(c)=>{
 try{
 const {email,otp} = c.req.valid("json")
 const storedOtp = await c.env.canzo_KV.get(`otp:${email}`)
 if(storedOtp !== otp ){
-    return c.json({error:"Invalid OTP"},400)
+    return c.json({success:false,error:{code:"INVALID_OTP",message:localizedError(c,"INVALID_OTP")}},400)
 }
 await c.env.canzo_KV.delete(`otp:${email}`)
 const resetToken = crypto.randomUUID()
 await c.env.canzo_KV.put(`reset-token:${email}`,resetToken,{expirationTtl:2000})
-return c.json({message:"OTP verified successfully",resetToken},200)
+return c.json({message:localized(c,"تم التحقق من رمز التحقق بنجاح","OTP verified successfully"),resetToken},200)
 }catch(error){
     console.error(`error while verifying OTP ${error}`)
         throw error
 }
     }).patch("/reset-password",zValidator("json",resetPasswordSchema,(result,c)=>{
         if(!result.success){
-            return c.json({error:result.error.issues[0].message},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
         }
     }),async(c)=>{
 try{
     const {email,password,resetToken} = c.req.valid("json")
     const storedToken = await c.env.canzo_KV.get(`reset-token:${email}`)
     if(!storedToken || storedToken !== resetToken){
-        return c.json({error:"Invalid reset token"},400)
+        return c.json({success:false,error:{code:"INVALID_RESET_TOKEN",message:localizedError(c,"INVALID_RESET_TOKEN")}},400)
     }
     console.log("db binding at hashed pass", c.env.DB);
     
     const hashedPassword = await bcrypt.hash(password, 10)
     await c.env.DB.prepare("UPDATE users SET password_hash = ?1, updated_at = datetime('now') WHERE email = ?2").bind(hashedPassword,email).run()
     await c.env.canzo_KV.delete(`reset-token:${email}`)
-    return c.json({message:"Password reset successful"},200)
+    return c.json({message:localized(c,"تم تغيير كلمة المرور بنجاح","Password reset successful")},200)
 }catch(error){
     console.error(`error while resetting password ${error}`)
         throw error
 }
-    }).post("/google", zValidator("json",googleLoginSchema),
+    }).post("/google", zValidator("json",googleLoginSchema),(result,c)=>{
+        if(!result.success){
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
+        }
+    }),
     async (c) => {
     try {
         const {idToken} = c.req.valid("json")
         const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
-        if (!res.ok) return c.json({ error: "Invalid token"}, 401);
+        if (!res.ok) return c.json({ success:false, error: { code:"INVALID_GOOGLE_TOKEN", message: localizedError(c,"INVALID_GOOGLE_TOKEN") } }, 401);
         const googleUser = await res.json<{
             sub: string;
             email: string;
@@ -181,7 +187,7 @@ try{
             aud: string;
         }>();
   if (googleUser.aud !== c.env.GOOGLE_CLIENT_ID) {
-    return c.json({ error: "Token not intended for this app" }, 401);
+    return c.json({ success:false, error: { code:"GOOGLE_TOKEN_WRONG_AUDIENCE", message: localizedError(c,"GOOGLE_TOKEN_WRONG_AUDIENCE") } }, 401);
   }
    let user = await c.env.DB
     .prepare("SELECT * FROM users WHERE google_id = ? OR email = ?")

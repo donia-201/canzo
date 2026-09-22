@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { localizedError } from "../utils/i18n";
+
 
 type Bindings = {
 CLOUDINARY_CLOUD_NAME: string;
@@ -8,7 +10,7 @@ imageRouter.get("/image/:key",async(c)=>{
     try{
 const key = c.req.param("key")
 if (!key || key.includes("..") || !/^[\w\-\.\/]+$/.test(key)) {
-  return c.json({ error: "Invalid key" }, 400)
+  return c.json({success:false,error:{code:"INVALID_KEY",message:localizedError(c,"INVALID_KEY")}}, 400)
 }
 
 if (key.startsWith('http://') || key.startsWith('https://')) {

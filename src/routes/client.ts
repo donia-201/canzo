@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { JwtVariables } from "hono/jwt";
 import {zValidator} from "@hono/zod-validator"
 import {arrayBasketsSchema} from "../validation/client"
-import { getLanguage, label, activityTypeLabels, statusLabels, localized } from "../utils/i18n"
+import { getLanguage, label, activityTypeLabels, statusLabels, localized, localizedError, validationMessage } from "../utils/i18n"
 //client schema
 type Client = {
     user_id: number
@@ -67,7 +67,7 @@ const clientRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
 
 clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
     if(!result.success){
-        return c.json({error:result.error.issues[0].message},400)
+        return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
     }
 }),async(c)=>{
     try{
@@ -88,7 +88,7 @@ clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
 
         if (filteredBaskets.length === 0) {
           return c.json(
-            { error: localized(c, "المياه متاحة حالياً لقاعات الأفراح فقط", "Water is currently available for wedding halls only") },
+            { error: localizedError(c,"WATER_WEDDING_HALL_ONLY") },
             400
           );
         }
@@ -129,7 +129,7 @@ clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
             .bind(userId, b.content_type, b.content_weight,b.price)
     )
 ])
-return c.json({ message: "تمت  إضافة السلة بنجاح" }, 201);
+return c.json({ message: localized(c,"تمت إضافة السلة بنجاح","Basket added successfully") }, 201);
     }catch(error){
         console.error(`خطأ أثناء إضافة السلة ${error}`)
         throw error
@@ -151,9 +151,9 @@ c.env.DB.prepare(
 ).bind(basketId, userId, isOrderExist.id)
 ])
  if(updateBasketWithOrderResult.meta.changes === 0 ){
-   return c.json({error:"فشل في تغيير حالة السلة الى ممتلئة او السلة غير موجودة"},400)
+   return c.json({success:false,error:{code:"BASKET_NOT_FOUND_OR_FULL_UPDATE_FAILED",message:localizedError(c,"BASKET_NOT_FOUND_OR_FULL_UPDATE_FAILED")}},400)
  }
-return c.json({message:"تم تعبئة السلة بنجاح"},200)
+return c.json({message:localized(c,"تم تعبئة السلة بنجاح","Basket filled successfully")},200)
 }
 const [insertrResult,updateBasketWithNoOrderResult]= await c.env.DB.batch([
  c.env.DB.prepare(
@@ -164,9 +164,9 @@ c.env.DB.prepare(
 ).bind(basketId, userId)
 ])
 if(updateBasketWithNoOrderResult.meta.changes === 0){
-return c.json({error:"فشل في تغيير حالة السلة الى ممتلئة او السلة غير موجودة"},400)
+return c.json({success:false,error:{code:"BASKET_NOT_FOUND_OR_FULL_UPDATE_FAILED",message:localizedError(c,"BASKET_NOT_FOUND_OR_FULL_UPDATE_FAILED")}},400)
 }
-return c.json({message:"تم تعبئة السلة بنجاح"},200)
+return c.json({message:localized(c,"تم تعبئة السلة بنجاح","Basket filled successfully")},200)
     }catch(error){
         console.error(`error while setting basket full ${error}`)
         throw error
@@ -197,7 +197,7 @@ const {userId,user_role} = c.get("jwtPayload") as TokenPayload
 const status = c.req.param("status")
 const OrderStatus = ["Pending","Completed","Cancelled"]
 if(!OrderStatus.includes(status)){
-    return c.json({error:localized(c,"حالة الطلب غير صحيحة","Invalid order status")},400)
+    return c.json({success:false,error:{code:"INVALID_ORDER_STATUS",message:localizedError(c,"INVALID_ORDER_STATUS")}},400)
 }
 let orders;
 if (status === "Pending") {
@@ -290,16 +290,16 @@ return c.json({wallet})
         const basket = await c.env.DB.prepare("SELECT is_full FROM baskets WHERE id = ?1 AND client_id = ?2").bind(basketId, userId).first<Basket>()
         
         if (!basket) {
-            return c.json({ error: "السلة غير موجودة" }, 404)
+            return c.json({success:false,error:{code:"BASKET_NOT_FOUND",message:localizedError(c,"BASKET_NOT_FOUND")}}, 404)
         }
         
         if (basket.is_full) {
-            return c.json({ message: "لا يمكن حذف سلة ممتلئة" }, 400)
+            return c.json({success:false,error:{code:"BASKET_FULL_CANNOT_DELETE",message:localizedError(c,"BASKET_FULL_CANNOT_DELETE")}}, 400)
         }
         
         await c.env.DB.prepare("DELETE FROM baskets WHERE id = ?1 AND client_id = ?2").bind(basketId, userId).run()
         
-        return c.json({ message: "Basket deleted successfully" }, 200)
+        return c.json({ message: localized(c,"تم حذف السلة بنجاح","Basket deleted successfully") }, 200)
     } catch (error) {
         console.error(`خطأ أثناء حذف السلة ${error}`)
         throw error

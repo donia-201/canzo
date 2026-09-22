@@ -1,86 +1,66 @@
-import { z } from "zod";
+import { z } from 'zod'
 
 const baseSchema = z.object({
-  username: z
-    .string()
-    .min(1, "اسم المستخدم مطلوب")
-    .min(3, "اسم المستخدم يجب ان يكون 3 أحرف على الأقل")
-    .max(50, "اسم المستخدم لا يجب أن يزيد عن 50 حرف"),
-  password: z
-    .string()
-    .min(1, "كلمة المرور مطلوبة")
-    .min(8, "يجب ان تكون كلمة المرور على الأقل 8 أحرف ")
-    .max(72)
-    .regex(/[A-Z]/, " كلمة المرور يجب ان تحتوي على حرف كبير واحد على الأقل")
-    .regex(/[a-z]/, "كلمة المرور يجب ان تحتوي على حرف صغير واحد على الأقل")
-    .regex(/[0-9]/, "كلمة المرور يجب ان تحتوي على رقم واحد على الأقل"),
-  confirmPassword: z.string().min(1, "تأكيد كلمة المرور مطلوب"),
-  email: z.email("البريد الإلكتروني غير صالح").max(300),
-  phoneNumber: z
-    .string()
-    .min(1, "رقم الهاتف مطلوب")
-    .regex(/^01[0125][0-9]{8}$/, "رقم الهاتف غير صحيح"),
-});
+  username: z.string()
+    .min(1, 'USERNAME_REQUIRED')
+    .min(3, 'USERNAME_MIN')
+    .max(50, 'USERNAME_MAX'),
+  password: z.string()
+    .min(1, 'PASSWORD_REQUIRED')
+    .min(8, 'PASSWORD_MIN')
+    .max(72, 'PASSWORD_MAX')
+    .regex(/[A-Z]/, 'PASSWORD_UPPER')
+    .regex(/[a-z]/, 'PASSWORD_LOWER')
+    .regex(/[0-9]/, 'PASSWORD_NUMBER'),
+  confirmPassword: z.string().min(1, 'CONFIRM_PASSWORD_REQUIRED'),
+  email: z.email('EMAIL_INVALID').max(300, 'EMAIL_MAX'),
+  phoneNumber: z.string()
+    .min(1, 'PHONE_REQUIRED')
+    .regex(/^01[0125][0-9]{8}$/, 'PHONE_INVALID'),
+})
+
 const refinedBaseSchema = baseSchema.refine(
   (data) => data.password === data.confirmPassword,
-  {
-    message: "كلمتا المرور غير متطابقتا",
-  }
-);
-const clientSignupSchema = refinedBaseSchema
-  .extend(  {
-    address: z
-      .string()
-      .min(1, "العنوان مطلوب")
-      .min(10, "العنوان قصير للغاية")
-      .max(255, "العنوان طويل للغاية"),
-    activityType: z.enum(
-      ["Wedding hall", "Restaurant", "Cafe", "Club", "Other"],
-      {
-        message:
-          "يجب ان يكون نوع النشاط أحد الخيارات التالية: قاعة أفراح, مطعم, مقهى , نادي , نشاط آخر",
-      }
-    ),
-    activityName: z
-      .string()
-      .trim()
-      .max(50, "اسم النشاط طويل للغاية")
-      .min(1, "اسم النشاط مطلوب"),
+  { message: 'PASSWORD_MISMATCH' }
+)
 
-  });
-  
+const clientSignupSchema = refinedBaseSchema.extend({
+  address: z.string()
+    .min(1, 'ADDRESS_REQUIRED')
+    .min(10, 'ADDRESS_SHORT')
+    .max(255, 'ADDRESS_LONG'),
+  activityType: z.enum(
+    ['Wedding hall', 'Restaurant', 'Cafe', 'Club', 'Other'],
+    { message: 'ACTIVITY_TYPE_INVALID' }
+  ),
+  activityName: z.string()
+    .trim()
+    .max(50, 'ACTIVITY_NAME_LONG')
+    .min(1, 'ACTIVITY_NAME_REQUIRED'),
+})
 
 const loginSchema = z.object({
-  identifier: z.string().min(1, " معرّف الدخول مطلوب").max(300),
-  password: z.string().min(1, "كلمة المرور مطلوبة للدخول").max(72),
-});
-const deviceTokenSchema = z.object({
-  device_token:z
-  .string()
-  .min(1, "FCM Token مطلوب")
+  identifier: z.string().min(1, 'IDENTIFIER_REQUIRED').max(300),
+  password: z.string().min(1, 'PASSWORD_REQUIRED').max(72),
 })
+
+const deviceTokenSchema = z.object({
+  device_token: z.string().min(1, 'FCM_TOKEN_REQUIRED'),
+})
+
 const resetPasswordSchema = baseSchema
-  .pick({
-    password: true,
-    confirmPassword: true,
-    email: true,
-  })
-  .extend({
-    resetToken: z.uuid("رمز إعادة التعيين غير صالح"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "كلمات المرور غير متطابقة",
-  });
-const enterEmailSchema = baseSchema.pick({
-  email: true,
-});
+  .pick({ password: true, confirmPassword: true, email: true })
+  .extend({ resetToken: z.uuid('RESET_TOKEN_INVALID') })
+  .refine((data) => data.password === data.confirmPassword, { message: 'PASSWORD_MISMATCH' })
+
+const enterEmailSchema = baseSchema.pick({ email: true })
+
 const enterOtpSchema = baseSchema
-  .pick({
-    email: true,
-  })
+  .pick({ email: true })
   .extend({
-    otp: z.string().min(1, "كود التحقق مطلوب").length(6, "كود التحقق لا يجب ان يقل عن 6 أحرف"),
-  });
+    otp: z.string().min(1, 'OTP_REQUIRED').length(6, 'OTP_LENGTH'),
+  })
+
 export {
   clientSignupSchema,
   loginSchema,
@@ -88,4 +68,9 @@ export {
   enterEmailSchema,
   enterOtpSchema,
   deviceTokenSchema,
-};
+}
+
+
+
+
+
