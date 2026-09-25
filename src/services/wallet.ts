@@ -65,48 +65,96 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
   const withdrawalId=Number(insert.meta.last_row_id)
   if(!withdrawalId) throw new WalletServiceError('WALLET_LOCK_FAILED','فشل إنشاء طلب السحب')
 
-  try {
-    const messageAr =
-  طلب سحب جديد #${withdrawalId}\n +
-  العميل: ${userName}\n +
-  المبلغ: ${amount} جنيه\n +
-  نوع المحفظة: ${walletTypeLabelAr}\n +
-  رقم المحفظة: ${walletNumber};
+ try {
+    // CHANGE: Build the same notification content in both languages
+    // using the existing centralized notificationText() helper.
+    const messageAr = notificationText(
+      'withdrawal_admin',
+      withdrawalId,
+      'ar',
+      {
+        name: requesterName,
+        amount,
+        walletType,
+        walletNumber,
+      }
+    )
 
-   const messageEn =
-  New withdrawal request #${withdrawalId}\n +
-  Client: ${userName}\n +
-  Amount: ${amount} EGP\n +
-  Wallet type: ${walletTypeLabelEn}\n +
-  Wallet number: ${walletNumber};
-    await db.prepare(`INSERT INTO notifications (recipient_id,recipient_type,message,message_en) SELECT id,'Admin',?1,?2 FROM users WHERE user_role='Admin'AND fcm_token IS NOT NULL
-    AND TRIM(fcm_token) != " `
-).bind(
-  messageAr,
-  messageEn
-).run()
-    const admins= await db.prepare(`
-      SELECT id,fcm_token FROM users WHERE user_role='Admin' AND fcm_token IS NOT NULL AND TRIM(fcm_token)!= " `).all<{
-        id:number; fcm_token:string}>()
-        for(const admin of admins.results??[]){
-          try{
-            await sendFirebasePush(
-              firebaseEnv,
-              admin.fcm_token,
-              'Canzo',
-              ar,{
-                type:'withdrawal',
-                withdrawa_id: String(withdrawalId)
-              }
-            )
-          }catch(e){
-            console.error(
-              `ADMIN_WITHDRAWAL_PUSH_ERROR_${admin.id}: `, e
-            )
+    const messageEn = notificationText(
+      'withdrawal_admin',
+      withdrawalId,
+      'en',
+      {
+        name: requesterName,
+        amount,
+        walletType,
+        walletNumber,
+      }
+    )
+
+    // CHANGE: Store both Arabic and English versions in the database.
+    // The GET notifications endpoint already chooses the correct language.
+    await db.prepare(
+     ` INSERT INTO notifications
+        (recipient_id, recipient_type, message, message_en)
+      SELECT
+        id,
+        'Admin',
+        ?1,
+        ?2
+      FROM users
+      WHERE user_role = 'Admin'`
+    )
+      .bind(messageAr, messageEn)
+      .run()
+
+    // CHANGE: Get each admin's FCM token and preferred language.
+    // This allows every admin to receive the Push in their own language.
+    const admins = await db.prepare(
+     ` SELECT id, fcm_token, language
+      FROM users
+      WHERE user_role = 'Admin'
+        AND fcm_token IS NOT NULL
+        AND TRIM(fcm_token) != " `
+    ).all<{
+      id: number
+      fcm_token: string
+      language: 'ar' | 'en'
+    }>()
+
+    for (const admin of admins.results ?? []) {
+      try {
+        // CHANGE: Select the Push message according to the admin's language.
+        const pushMessage =
+          admin.language === 'en' ? messageEn : messageAr
+
+        await sendFirebasePush(
+          firebaseEnv,
+          admin.fcm_token,
+          'Canzo',
+          pushMessage,
+          {
+            type: 'withdrawal',
+            withdraw_id: String(withdrawalId),
           }
-        }
-  } catch(e) { console.error('WITHDRAWAL_NOTIFICATION_CREATE_ERROR:',e) }
-  return withdrawalId
+        )
+      } catch (e) {
+        // CHANGE: Push failure must not cancel the withdrawal operation.
+        console.error(
+          `ADMIN_WITHDRAWAL_PUSH_ERROR_${admin.id}:`,
+          e
+        )
+      }
+    }
+  } catch (e) {
+    // CHANGE: Notification failure must never rollback or break
+    // the already-created withdrawal request.
+    console.error(
+      'WITHDRAWAL_NOTIFICATION_CREATE_ERROR:',
+      e
+    )
+  } 
+  return  withdrawalId
 }
 
 export async function approveWithdrawal(db:D1Database,withdrawalId:number,adminId:number,screenshotPath:string,firebaseEnv:{FIREBASE_PROJECT_ID:string;FIREBASE_CLIENT_EMAIL:string;FIREBASE_PRIVATE_KEY:string}):Promise<void> {
@@ -129,10 +177,73 @@ export async function approveWithdrawal(db:D1Database,withdrawalId:number,adminI
   if(results[0].meta.changes===0 || results[1].meta.changes===0 || results[2].meta.changes===0) {
     throw new WalletServiceError('WALLET_RELEASE_FAILED','فشل إنهاء عملية السحب المالية. لم يتم اعتماد العملية.')
   }
+// CHANGE: Prepare both Arabic and English versions for notification history.
+const messageAr = notificationText(
+  'withdrawal_approved',
+  withdrawalId,
+  'ar'
+)
 
-  const ar=notificationText('withdrawal_approved',withdrawalId,'ar'); const en=notificationText('withdrawal_approved',withdrawalId,'en')
-  try { await db.prepare("INSERT INTO notifications (recipient_id,recipient_type,message,message_en) VALUES (?1,'Client',?2,?3)").bind(withdrawal.user_id,ar,en).run() } catch(e) { console.error('APPROVAL_NOTIFICATION_DB_ERROR:',e) }
-  try { const user=await db.prepare('SELECT fcm_token FROM users WHERE id=?1').bind(withdrawal.user_id).first<{fcm_token:string|null}>(); if(user?.fcm_token) await sendFirebasePush(firebaseEnv,user.fcm_token,'Canzo',ar,{type:'withdrawal',withdraw_id:String(withdrawalId)}) } catch(e) { console.error('APPROVAL_PUSH_NOTIFICATION_ERROR:',e) }
+const messageEn = notificationText(
+  'withdrawal_approved',
+  withdrawalId,
+  'en'
+)
+
+try {
+  // CHANGE: Store both language versions in notification history.
+  await db.prepare(
+    `INSERT INTO notifications
+      (recipient_id, recipient_type, message, message_en)
+    VALUES (?1, 'Client', ?2, ?3)`
+  )
+    .bind(withdrawal.user_id, messageAr, messageEn)
+    .run()
+} catch (e) {
+  console.error(
+    'APPROVAL_NOTIFICATION_DB_ERROR:',
+    e
+  )
+}
+
+try {
+  // CHANGE: Get the client's FCM token and preferred language
+  // so the Push Notification is sent in the selected language.
+  const user = await db.prepare(
+   ` SELECT fcm_token, language
+    FROM users
+    WHERE id = ?1`
+  )
+    .bind(withdrawal.user_id)
+    .first<{
+      fcm_token: string | null
+      language: 'ar' | 'en'
+    }>()
+
+  if (user?.fcm_token) {
+    // CHANGE: Select the Push message according to the client's language.
+    const pushMessage =
+      user.language === 'en' ? messageEn : messageAr
+
+    await sendFirebasePush(
+      firebaseEnv,
+      user.fcm_token,
+      'Canzo',
+      pushMessage,
+      {
+        type: 'withdrawal',
+        withdraw_id: String(withdrawalId),
+      }
+    )
+  }
+} catch (e) {
+  // CHANGE: Push failure must not affect the successful withdrawal approval.
+  console.error(
+    'APPROVAL_PUSH_NOTIFICATION_ERROR:',
+    e
+  )
+}
+ 
 }
 
 export async function rejectWithdrawal(db:D1Database,withdrawalId:number,adminId:number,firebaseEnv:{FIREBASE_PROJECT_ID:string;FIREBASE_CLIENT_EMAIL:string;FIREBASE_PRIVATE_KEY:string}):Promise<void> {
@@ -146,10 +257,69 @@ export async function rejectWithdrawal(db:D1Database,withdrawalId:number,adminId
   ])
   if(results[0].meta.changes===0) throw new WalletServiceError('WITHDRAWAL_NOT_PENDING','طلب السحب تم التعامل معه بالفعل بواسطة عملية أخرى')
   if(results[1].meta.changes===0) throw new WalletServiceError('WALLET_RELEASE_FAILED','فشل إعادة المبلغ إلى رصيد المحفظة')
-  const ar=notificationText('withdrawal_rejected',withdrawalId,'ar'); const en=notificationText('withdrawal_rejected',withdrawalId,'en')
-  try { await db.prepare("INSERT INTO notifications (recipient_id,recipient_type,message,message_en) VALUES (?1,'Client',?2,?3)").bind(withdrawal.user_id,ar,en).run() } catch(e) { console.error('REJECTION_NOTIFICATION_DB_ERROR:',e) }
-  try {
-    const user=await db.prepare('SELECT fcm_token FROM users WHERE id=?1').bind(withdrawal.user_id).first<{fcm_token:string|null}>()
-    if(user?.fcm_token) await sendFirebasePush(firebaseEnv,user.fcm_token,'Canzo',ar,{type:'withdrawal',withdraw_id:String(withdrawalId)})
-  } catch(e) { console.error('REJECTION_PUSH_NOTIFICATION_ERROR:',e) }
+  // CHANGE: Prepare both Arabic and English versions for notification history.
+const messageAr = notificationText(
+  'withdrawal_rejected',
+  withdrawalId,
+  'ar'
+)
+
+const messageEn = notificationText(
+  'withdrawal_rejected',
+  withdrawalId,
+  'en'
+)
+
+try {
+  // CHANGE: Store both language versions in notification history.
+  await db.prepare(
+  `  INSERT INTO notifications
+      (recipient_id, recipient_type, message, message_en)
+    VALUES (?1, 'Client', ?2, ?3)`
+  )
+    .bind(withdrawal.user_id, messageAr, messageEn)
+    .run()
+} catch (e) {
+  console.error(
+    'REJECTION_NOTIFICATION_DB_ERROR:',
+    e
+  )
+}
+
+try {
+  // CHANGE: Get the client's language together with the FCM token.
+  const user = await db.prepare(
+    `SELECT fcm_token, language
+    FROM users
+    WHERE id = ?1`
+  )
+    .bind(withdrawal.user_id)
+    .first<{
+      fcm_token: string | null
+      language: 'ar' | 'en'
+    }>()
+
+  if (user?.fcm_token) {
+    // CHANGE: Send the Push Notification in the client's selected language.
+    const pushMessage =
+      user.language === 'en' ? messageEn : messageAr
+
+    await sendFirebasePush(
+      firebaseEnv,
+      user.fcm_token,
+      'Canzo',
+      pushMessage,
+      {
+        type: 'withdrawal',
+        withdraw_id: String(withdrawalId),
+      }
+    )
+  }
+} catch (e) {
+  // CHANGE: Push failure must not affect the successful withdrawal rejection.
+  console.error(
+    'REJECTION_PUSH_NOTIFICATION_ERROR:',
+    e
+  )
+}
 }

@@ -145,8 +145,8 @@ export function localizedError(c: Context, code: string, fallback?: string) {
   return messageForLanguage(code, getLanguage(c), fallback)
 }
 
-export function validationMessage(error: ZodError, lang: Language) {
-  const issue = error.issues[0]
+export function validationMessage(issues:{message?:string}[], lang: Language) {
+  const issue = issues[0]
   return messageForLanguage(issue?.message || 'VALIDATION_ERROR', lang, issue?.message)
 }
 

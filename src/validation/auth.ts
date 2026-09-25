@@ -46,6 +46,7 @@ const loginSchema = z.object({
 
 const deviceTokenSchema = z.object({
   device_token: z.string().min(1, 'FCM_TOKEN_REQUIRED'),
+  language:z.enum(['ar','en']).default('en'),
 })
 
 const resetPasswordSchema = baseSchema

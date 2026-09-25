@@ -26,7 +26,7 @@ deviceTokenRouter.post(
       return c.json(
         {
           success:false,
-          error: { code:"VALIDATION_ERROR", message:validationMessage(result.error,getLanguage(c)) },
+          error: { code:"VALIDATION_ERROR", message:validationMessage(result.error.issues,getLanguage(c)) },
         },
         400
       );
@@ -47,7 +47,7 @@ deviceTokenRouter.post(
         );
       }
 
-      const { device_token } = c.req.valid("json");
+      const { device_token , language } = c.req.valid("json");
 
       // Make sure the user exists
       const user = await c.env.DB.prepare(
@@ -68,9 +68,9 @@ deviceTokenRouter.post(
 
       // Update the FCM token for the authenticated user
       await c.env.DB.prepare(
-        "UPDATE users SET fcm_token = ?1, updated_at = datetime('now') WHERE id = ?2"
+        "UPDATE users SET fcm_token = ?1, language =?2, updated_at = datetime('now') WHERE id = ?3"
       )
-        .bind(device_token, payload.userId)
+        .bind(device_token,language , payload.userId)
         .run();
 
       return c.json(
