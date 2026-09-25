@@ -37,7 +37,7 @@ const authRouter = new Hono<{Bindings:Bindings}>()
 .post("/client/signup",
    zValidator("json",clientSignupSchema,(result,c)=>{
     if(!result.success){
-        return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
+        return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))}},400)
     }
    }) 
     ,async(c)=>{
@@ -81,7 +81,7 @@ const authRouter = new Hono<{Bindings:Bindings}>()
     }).post("/login",zValidator("json",loginSchema,(result,c)=>{
     
         if(!result.success){
-            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))}},400)
         }
     }),async(c)=>{
 const {identifier,password} = c.req.valid("json")
@@ -103,7 +103,7 @@ return c.json({message:localized(c,"تم تسجيل الدخول بنجاح","Lo
 }
     }).post("/forgot-password",zValidator("json",enterEmailSchema,(result,c)=>{
         if(!result.success){
-            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))}},400)
         }
     }),async(c)=>{
 try{
@@ -132,7 +132,7 @@ return c.json({message:localized(c,"تم إرسال رمز التحقق بنجا
 }
     }).post("/verify-otp",zValidator("json",enterOtpSchema,(result,c)=>{
         if(!result.success){
-            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))}},400)
         }
     }),async(c)=>{
 try{
@@ -151,7 +151,7 @@ return c.json({message:localized(c,"تم التحقق من رمز التحقق �
 }
     }).patch("/reset-password",zValidator("json",resetPasswordSchema,(result,c)=>{
         if(!result.success){
-            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))}},400)
         }
     }),async(c)=>{
 try{
@@ -170,9 +170,9 @@ try{
     console.error(`error while resetting password ${error}`)
         throw error
 }
-    }).post("/google", zValidator("json",googleLoginSchema),(result,c)=>{
+    }).post("/google", zValidator("json",googleLoginSchema,(result,c)=>{
         if(!result.success){
-            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c)),},},400);
         }
     }),
     async (c) => {
