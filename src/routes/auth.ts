@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { clientSignupSchema,loginSchema,resetPasswordSchema,enterEmailSchema,enterOtpSchema} from "../validation/auth";
-import {googleLoginSchema,setupProfileSchema} from "../validation/google"
+import {googleLoginSchema } from "../validation/google"
 import { zValidator } from "@hono/zod-validator";
 import {jwt,sign} from "hono/jwt"
 import {sendEmail,emailData} from "../servieces/sendingEmails"
