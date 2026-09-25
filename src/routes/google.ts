@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { sign } from "hono/jwt";
 import { zValidator } from "@hono/zod-validator";
+import { setupProfileSchema } from "../validation/google";
 import { getLanguage, localizedError, validationMessage } from '../utils/i18n'
 type Bindings = {
     GOOGLE_CLIENT_ID: string;
