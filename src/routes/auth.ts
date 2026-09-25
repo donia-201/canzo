@@ -170,7 +170,9 @@ try{
     console.error(`error while resetting password ${error}`)
         throw error
 }
-    }).post("/google", zValidator("json",googleLoginSchema,(result,c)=>{
+    }
+            )
+    .post("/google", zValidator("json",googleLoginSchema,(result,c)=>{
         if(!result.success){
             return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c)),},},400);
         }
