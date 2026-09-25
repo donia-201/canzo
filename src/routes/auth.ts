@@ -172,52 +172,76 @@ try{
 }
     }
             )
-    .post("/google", zValidator("json",googleLoginSchema,(result,c)=>{
-        if(!result.success){
-            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))
-                                               }
-                          },400);
+        .post("/google", zValidator("json", googleLoginSchema, (result, c) => {
+        if (!result.success) {
+            return c.json({
+                success: false,
+                error: {
+                    code: "VALIDATION_ERROR",
+                    message: validationMessage(result.error.issues, getLanguage(c))
+                }
+            }, 400);
         }
-    }),
-    async (c) => {
-    try {
-        const {idToken} = c.req.valid("json")
-        const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
-        if (!res.ok) return c.json({ success:false, error: { code:"INVALID_GOOGLE_TOKEN", message: localizedError(c,"INVALID_GOOGLE_TOKEN") } }, 401);
-        const googleUser = await res.json<{
-            sub: string;
-            email: string;
-            name: string;
-            aud: string;
-        }>();
-  if (googleUser.aud !== c.env.GOOGLE_CLIENT_ID) {
-    return c.json({ success:false, error: { code:"GOOGLE_TOKEN_WRONG_AUDIENCE", message: localizedError(c,"GOOGLE_TOKEN_WRONG_AUDIENCE") } }, 401);
-  }
-   let user = await c.env.DB
-    .prepare("SELECT * FROM users WHERE google_id = ? OR email = ?")
-    .bind(googleUser.sub,googleUser.email)
-    .first();
-let isFirstLogin = false;
-    if(!user){
-    await c.env.DB
-    .prepare("INSERT INTO users (google_id,user_name, email,user_role) VALUES (?, ?, ?,?)    ")
-    .bind(googleUser.sub,googleUser.name,googleUser.email,"Client")
-    .run();
-    
-    user = await c.env.DB
-    .prepare("SELECT * FROM users WHERE google_id = ?")
-    .bind(googleUser.sub)
-    .first();
-    isFirstLogin = true;
-    }
-const token = await sign({
-    userId: user?.id,
-    user_role: user?.user_role, 
-},c.env.JWT_SECRET!);
-return c.json({token,user_role:user?.user_role,isFirstLogin})
-    } catch (error) {
-        console.error("error while Google login", error)
-        throw error
-    }
-})
+    }), async (c) => {
+        try {
+            const { idToken } = c.req.valid("json");
+            const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+            if (!res.ok) {
+                return c.json({
+                    success: false,
+                    error: {
+                        code: "INVALID_GOOGLE_TOKEN",
+                        message: localizedError(c, "INVALID_GOOGLE_TOKEN")
+                    }
+                }, 401);
+            }
+
+            const googleUser = await res.json<{
+                sub: string;
+                email: string;
+                name: string;
+                aud: string;
+            }>();
+
+            if (googleUser.aud !== c.env.GOOGLE_CLIENT_ID) {
+                return c.json({
+                    success: false,
+                    error: {
+                        code: "GOOGLE_TOKEN_WRONG_AUDIENCE",
+                        message: localizedError(c, "GOOGLE_TOKEN_WRONG_AUDIENCE")
+                    }
+                }, 401);
+            }
+
+            let user = await c.env.DB
+                .prepare("SELECT * FROM users WHERE google_id = ? OR email = ?")
+                .bind(googleUser.sub, googleUser.email)
+                .first<User>();
+
+            let isFirstLogin = false;
+            if (!user) {
+                await c.env.DB
+                    .prepare("INSERT INTO users (google_id, user_name, email, user_role) VALUES (?, ?, ?, ?)")
+                    .bind(googleUser.sub, googleUser.name, googleUser.email, "Client")
+                    .run();
+
+                user = await c.env.DB
+                    .prepare("SELECT * FROM users WHERE google_id = ?")
+                    .bind(googleUser.sub)
+                    .first<User>();
+                isFirstLogin = true;
+            }
+
+            const token = await sign({
+                userId: user?.id,
+                user_role: user?.user_role, 
+            }, c.env.JWT_SECRET!);
+
+            return c.json({ token, user_role: user?.user_role, isFirstLogin });
+        } catch (error) {
+            console.error("error while Google login", error);
+            throw error;
+        }
+    })
+
 export default authRouter 
