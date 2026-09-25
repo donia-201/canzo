@@ -174,7 +174,9 @@ try{
             )
     .post("/google", zValidator("json",googleLoginSchema,(result,c)=>{
         if(!result.success){
-            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c)),},},400);
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))
+                                               }
+                          },400);
         }
     }),
     async (c) => {
