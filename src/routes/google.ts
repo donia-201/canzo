@@ -3,6 +3,7 @@ import { sign } from "hono/jwt";
 import { zValidator } from "@hono/zod-validator";
 import {setupProfileSchema} from "../validation/google";
 import { getLanguage, localizedError, validationMessage } from '../utils/i18n'
+
 type Bindings = {
     GOOGLE_CLIENT_ID: string;
     DB: D1Database
@@ -27,7 +28,9 @@ const googleRouter = new Hono<{Bindings:Bindings,Variables:User}>();
 googleRouter.post("/setup-profile",
     zValidator("json",setupProfileSchema,(result,c)=>{
         if(!result.success){
-            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))}},400)
+            return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))
+            }
+        },400)
         }
     }),async(c)=>{
     try {
