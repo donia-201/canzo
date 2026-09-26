@@ -108,6 +108,7 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
       .bind(messageAr, messageEn)
       .run()
 
+        console.log("withdrawal_push: start")
     // CHANGE: Get each admin's FCM token and preferred language.
     // This allows every admin to receive the Push in their own language.
     const admins = await db.prepare(
@@ -121,9 +122,11 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
       fcm_token: string
       language: 'ar' | 'en'
     }>()
+    console.log("withdrawal_push: admins found", admins.results?.length??0);
 
     for (const admin of admins.results ?? []) {
       try {
+        console.log(`withdrawal_push: sending to admin_ ${admin.id} `);
         // CHANGE: Select the Push message according to the admin's language.
         const pushMessage =
           admin.language === 'en' ? messageEn : messageAr
@@ -137,7 +140,9 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
             type: 'withdrawal',
             withdraw_id: String(withdrawalId),
           }
-        )
+        ) 
+                console.log(`withdrawal_push: success admin_ ${admin.id} `);
+
       } catch (e) {
         // CHANGE: Push failure must not cancel the withdrawal operation.
         console.error(
@@ -145,7 +150,7 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
           e
         )
       }
-    }
+    } console.log("withdrawal_push : end ");
   } catch (e) {
     // CHANGE: Notification failure must never rollback or break
     // the already-created withdrawal request.
@@ -156,7 +161,7 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
   } 
   return  withdrawalId
 }
-
+///////////////////////////////////////////////////////////////////
 export async function approveWithdrawal(db:D1Database,withdrawalId:number,adminId:number,screenshotPath:string,firebaseEnv:{FIREBASE_PROJECT_ID:string;FIREBASE_CLIENT_EMAIL:string;FIREBASE_PRIVATE_KEY:string}):Promise<void> {
   if(!screenshotPath) throw new AppError('VALIDATION_ERROR','يجب رفع صورة إثبات الدفع قبل الموافقة على طلب السحب',400)
   const withdrawal=await db.prepare("SELECT id,user_id,amount,status FROM withdrawal_requests WHERE id=?1").bind(withdrawalId).first<WithdrawalRow>()
