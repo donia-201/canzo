@@ -112,11 +112,11 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
     // CHANGE: Get each admin's FCM token and preferred language.
     // This allows every admin to receive the Push in their own language.
     const admins = await db.prepare(
+      //  AND fcm_token IS NOT NULL
+        // AND TRIM(fcm_token) != "
      ` SELECT id, fcm_token, language
       FROM users
-      WHERE user_role = 'Admin'
-        AND fcm_token IS NOT NULL
-        AND TRIM(fcm_token) != " `
+      WHERE user_role = 'Admin' `
     ).all<{
       id: number
       fcm_token: string
@@ -155,8 +155,12 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
     // CHANGE: Notification failure must never rollback or break
     // the already-created withdrawal request.
     console.error(
-      'WITHDRAWAL_NOTIFICATION_CREATE_ERROR:',
-      e
+      'WITHDRAWAL_NOTIFICATION_CREATE_ERROR_message:',
+      e instanceof Error ? e.message : String(e)
+    )
+        console.error(
+      'WITHDRAWAL_NOTIFICATION_CREATE_ERROR_message:',
+      JSON.stringify(e)
     )
   } 
   return  withdrawalId
