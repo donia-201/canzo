@@ -54,7 +54,7 @@ function mapWalletError(c:any,err:unknown){
 }
 
 export const clientWithdrawRouter=new Hono<{Bindings:Bindings;Variables:Variables}>()
-clientWithdrawRouter.post('/withdraw',zValidator('json',withdrawSchema,(result,c)=>{if(!result.success)return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)}),async c=>{
+clientWithdrawRouter.post('/withdraw',zValidator('json',withdrawSchema,(result,c)=>{if(!result.success)return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))}},400)}),async c=>{
   try{const {userId}=c.get('jwtPayload') as TokenPayload; 
   const {amount,wallet_number,wallet_type}=c.req.valid('json'); 
   const withdrawalId=await createWithdrawalRequest(c.env.DB,userId,amount,wallet_number,wallet_type ,{
