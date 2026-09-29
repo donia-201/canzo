@@ -156,7 +156,7 @@ export function notificationText(
   lang: Language,
   details?: { name?: string; amount?: number; walletType?: string; walletNumber?: string }
 ) {
-  const id = `#${withdrawalId}`
+  const id = `${withdrawalId}`
 
   if (kind === 'withdrawal_approved') {
     return lang === 'en'
@@ -176,6 +176,6 @@ export function notificationText(
   const walletNumber = details?.walletNumber || (lang === 'en' ? 'Not provided' : 'غير متوفر')
 
   return lang === 'en'
-    ? `New withdrawal request ${id}\nClient: ${name}\nAmount: ${amount} EGP\nWallet type: ${walletType}\nWallet number: ${walletNumber}`
-    : `طلب سحب جديد ${id}\nالعميل: ${name}\nالمبلغ: ${amount} جنيه\nنوع المحفظة: ${walletType}\nرقم المحفظة: ${walletNumber}`
+    ? `New withdrawal request \nClient: ${name}\nAmount: ${amount} EGP\nWallet type: ${walletType}\nWallet number: ${walletNumber}`
+    : `طلب سحب جديد \nالعميل: ${name}\nالمبلغ: ${amount} جنيه\nنوع المحفظة: ${walletType}\nرقم المحفظة: ${walletNumber}`
 }

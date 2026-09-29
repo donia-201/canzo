@@ -165,7 +165,6 @@ export async function createWithdrawalRequest(db:D1Database,userId:number,amount
   } 
   return  withdrawalId
 }
-///////////////////////////////////////////////////////////////////
 export async function approveWithdrawal(db:D1Database,withdrawalId:number,adminId:number,screenshotPath:string,firebaseEnv:{FIREBASE_PROJECT_ID:string;FIREBASE_CLIENT_EMAIL:string;FIREBASE_PRIVATE_KEY:string}):Promise<void> {
   if(!screenshotPath) throw new AppError('VALIDATION_ERROR','يجب رفع صورة إثبات الدفع قبل الموافقة على طلب السحب',400)
   const withdrawal=await db.prepare("SELECT id,user_id,amount,status FROM withdrawal_requests WHERE id=?1").bind(withdrawalId).first<WithdrawalRow>()

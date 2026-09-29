@@ -67,7 +67,7 @@ const clientRouter = new Hono<{Bindings:Bindings,Variables:Variables}>()
 
 clientRouter.post("/baskets",zValidator("json",arrayBasketsSchema,(result,c)=>{
     if(!result.success){
-        return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error,getLanguage(c))}},400)
+        return c.json({success:false,error:{code:"VALIDATION_ERROR",message:validationMessage(result.error.issues,getLanguage(c))}},400)
     }
 }),async(c)=>{
     try{
